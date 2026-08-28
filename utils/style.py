@@ -1,10 +1,18 @@
 # -*- coding: utf-8 -*-
 """Sistema de diseño v2: tipografía proporcional, spacing compacto, componentes reutilizables."""
 import math
+from pathlib import Path
 
 import streamlit as st
 
 FONT_FAMILY = "'Montserrat', -apple-system, 'Segoe UI', sans-serif"
+
+# Logo de marca (Glocalminds). Se muestra en el sidebar de todas las páginas vía inject().
+LOGO_PATH = Path(__file__).resolve().parent.parent / "images" / "logoGnaranja.png"
+
+# Ubicación inicial de TODOS los mapas: centrada en Chile (foco de la plataforma).
+MAP_CENTER_CHILE = {"lat": -35.5, "lon": -71.3}
+MAP_ZOOM_CHILE = 3.2
 
 COLOR_PRIMARY = "#0B6E4F"
 COLOR_PRIMARY_DARK = "#08402F"
@@ -254,6 +262,13 @@ button[data-baseweb="tab"] {{ padding: 6px 12px !important; }}
 
 
 def inject():
+    if LOGO_PATH.exists():
+        try:
+            st.logo(str(LOGO_PATH), size="large")
+        except TypeError:
+            st.logo(str(LOGO_PATH))
+        except Exception:
+            pass
     st.markdown(_CSS, unsafe_allow_html=True)
 
 

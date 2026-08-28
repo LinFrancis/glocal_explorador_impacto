@@ -8,6 +8,7 @@ import streamlit as st
 
 from utils.components import render_news_card
 from utils.data import filter_by_multilabel, get_options, load_noticias
+from utils.export import experiences_to_excel, experiences_to_word
 from utils.style import inject, page_header, section_label
 
 st.set_page_config(page_title="Explorador Avanzado", layout="wide")
@@ -16,7 +17,8 @@ page_header(
     "Búsqueda multicriterio",
     "Explorador Avanzado",
     "Combina cualquier número de filtros. Dentro de un mismo filtro se combina con 'o'; entre "
-    "filtros distintos, con 'y'. Haz clic en una fila de la tabla para ver la ficha completa.",
+    "filtros distintos, con 'y'. Marca experiencias con las casillas para abrir su ficha o "
+    "descargarlas en Word y Excel para una postulación.",
 )
 
 df = load_noticias()
@@ -27,6 +29,16 @@ ACTORES_COL = "actores_normalizados" if "actores_normalizados" in df.columns els
 def _show_dialog(item_id: int):
     row = df[df["item"] == item_id].iloc[0]
     render_news_card(row)
+
+
+@st.cache_data(show_spinner=False)
+def _excel_bytes(item_ids: tuple[int, ...]) -> bytes:
+    return experiences_to_excel(df[df["item"].isin(item_ids)])
+
+
+@st.cache_data(show_spinner=False)
+def _word_bytes(item_ids: tuple[int, ...], contexto: str) -> bytes:
+    return experiences_to_word(df[df["item"].isin(item_ids)], contexto)
 
 
 with st.sidebar:
@@ -96,66 +108,124 @@ if f_anios is not None:
     result = result[mask_rango]
 
 # ------------------------------------------------------------ resultados
-c1, c2 = st.columns([3, 1])
-c1.metric("Experiencias encontradas", f"{len(result)} de {len(df)}")
-with c2:
-    st.write("")
-    st.download_button(
-        "Descargar CSV",
-        data=result.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
-        file_name="experiencias_filtradas.csv",
-        mime="text/csv",
-        width="stretch",
-    )
+st.metric("Experiencias encontradas", f"{len(result)} de {len(df)}")
 
-cols_mostrar = [
-    "item", "titulo", "descripcion_catalogo", "url_noticia",
-    "categorias", "categoria_macro", "metodologia", "actores_normalizados",
-    "eje_gcaa", "objetivo_gcaa", "atributos_resiliencia", "subatributos_resiliencia",
-    "beneficiarios_directos", "beneficiarios_indirectos", "enfoque_genero",
-    "lugar", "anio",
+# Orden de columnas pedido: Título · Año · País · Resumen · Texto completo · Link · (todo lo demás).
+COLUMN_ORDER = [
+    ("titulo", "Título", "text"),
+    ("anio", "Año", "year"),
+    ("pais", "País", "text"),
+    ("descripcion_catalogo", "Resumen", "text"),
+    ("contenido_completo", "Texto completo", "text"),
+    ("url_noticia", "Link", "link"),
+    ("categorias", "Categoría temática", "text"),
+    ("categoria_macro", "Categoría macro", "text"),
+    ("metodologia", "Metodología", "text"),
+    (ACTORES_COL, "Actores institucionales", "text"),
+    ("eje_gcaa", "Eje GCAA", "text"),
+    ("objetivo_gcaa", "Objetivo GCAA", "text"),
+    ("atributos_resiliencia", "Atributo de resiliencia", "text"),
+    ("subatributos_resiliencia", "Sub-atributo de resiliencia", "text"),
+    ("beneficiarios_directos", "Beneficiarios directos", "text"),
+    ("beneficiarios_indirectos", "Beneficiarios indirectos", "text"),
+    ("enfoque_genero", "Enfoque de género", "text"),
+    ("lugar", "Lugar", "text"),
 ]
-cols_mostrar = [c for c in cols_mostrar if c in result.columns]
-display_df = result[cols_mostrar].rename(columns={
-    "descripcion_catalogo": "resumen",
-    "url_noticia": "link",
-    "actores_normalizados": "actores",
-})
+cols_present = [(c, label, kind) for c, label, kind in COLUMN_ORDER if c in result.columns]
+display_df = result[[c for c, _, _ in cols_present]].reset_index(drop=True)
 
+col_cfg = {}
+for c, label, kind in cols_present:
+    if kind == "num":
+        col_cfg[c] = st.column_config.NumberColumn(label, width="small")
+    elif kind == "year":
+        col_cfg[c] = st.column_config.NumberColumn(label, format="%d", width="small")
+    elif kind == "link":
+        col_cfg[c] = st.column_config.LinkColumn(label, display_text="Abrir ↗", width="small")
+    elif c in ("descripcion_catalogo", "contenido_completo"):
+        col_cfg[c] = st.column_config.TextColumn(label, width="large")
+    else:
+        col_cfg[c] = st.column_config.TextColumn(label, width="medium")
+
+st.caption(
+    "Marca una o varias experiencias con las casillas de la izquierda. Con **una** marcada puedes "
+    "abrir su **ficha completa** (con todas las categorizaciones, más de lo que muestra la web "
+    "original). Con **una o más**, puedes descargarlas en **Word** y **Excel** para una postulación."
+)
 event = st.dataframe(
     display_df,
     width="stretch",
     hide_index=True,
     height=560,
     on_select="rerun",
-    selection_mode="single-row",
-    column_config={
-        "item": st.column_config.NumberColumn("N.", width="small"),
-        "titulo": st.column_config.TextColumn("Título", width="medium"),
-        "resumen": st.column_config.TextColumn("Resumen", width="large"),
-        "link": st.column_config.LinkColumn("Link", display_text="Abrir ↗", width="small"),
-        "categorias": st.column_config.TextColumn("Categorías", width="medium"),
-        "categoria_macro": st.column_config.TextColumn("Categoría macro", width="medium"),
-        "metodologia": st.column_config.TextColumn("Metodología", width="medium"),
-        "actores": st.column_config.TextColumn("Actores", width="medium"),
-        "eje_gcaa": st.column_config.TextColumn("Eje GCAA", width="medium"),
-        "objetivo_gcaa": st.column_config.TextColumn("Objetivo GCAA", width="medium"),
-        "atributos_resiliencia": st.column_config.TextColumn("Atributos resiliencia", width="medium"),
-        "subatributos_resiliencia": st.column_config.TextColumn("Sub-atributos resiliencia", width="medium"),
-        "beneficiarios_directos": st.column_config.TextColumn("Beneficiarios directos", width="medium"),
-        "beneficiarios_indirectos": st.column_config.TextColumn("Beneficiarios indirectos", width="medium"),
-        "enfoque_genero": st.column_config.TextColumn("Enfoque de género", width="small"),
-        "lugar": st.column_config.TextColumn("Lugar", width="medium"),
-        "anio": st.column_config.NumberColumn("Año", format="%d", width="small"),
-    },
-)
-st.caption(
-    "Todas las categorías se muestran completas (todas las etiquetas de cada experiencia, no solo la "
-    "principal). Usa el ícono de columnas de la tabla para mostrar/ocultar, y haz clic en una fila para "
-    "abrir la ficha completa con el contenido íntegro."
+    selection_mode="multi-row",
+    column_config=col_cfg,
 )
 
 selected_rows = event.selection.rows if event and event.selection else []
-if selected_rows:
-    item_id = int(display_df.iloc[selected_rows[0]]["item"])
-    _show_dialog(item_id)
+sel_df = result.iloc[selected_rows] if selected_rows else result.iloc[[]]
+sel_ids = tuple(int(i) for i in sel_df["item"].tolist())
+
+st.divider()
+section_label(f"Selección para exportar — {len(sel_ids)} experiencia(s)")
+
+if not sel_ids:
+    st.info("Marca experiencias en la tabla para abrir su ficha o descargarlas.")
+else:
+    if len(sel_ids) == 1:
+        if st.button("📄 Ver ficha completa de la experiencia marcada", type="primary"):
+            _show_dialog(sel_ids[0])
+    else:
+        st.caption("Para ver una ficha, deja solo una experiencia marcada.")
+
+    contexto = st.text_input(
+        "¿Para qué es esta selección? (opcional, se incluye en el encabezado del Word)",
+        placeholder="Ej.: Postulación a fondo de apoyo a comunidades educativas — antecedentes de experiencias previas",
+    )
+    d1, d2, d3 = st.columns(3)
+    d1.download_button(
+        "⬇️ Word (.docx)",
+        data=_word_bytes(sel_ids, contexto),
+        file_name="experiencias_seleccionadas.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        width="stretch",
+    )
+    d2.download_button(
+        "⬇️ Excel (.xlsx)",
+        data=_excel_bytes(sel_ids),
+        file_name="experiencias_seleccionadas.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+    )
+    d3.download_button(
+        "⬇️ CSV",
+        data=sel_df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+        file_name="experiencias_seleccionadas.csv",
+        mime="text/csv",
+        width="stretch",
+    )
+
+with st.expander("Descargar TODOS los resultados filtrados (sin marcar uno por uno)"):
+    st.download_button(
+        "⬇️ CSV con los " + str(len(result)) + " resultados",
+        data=result.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+        file_name="experiencias_filtradas.csv",
+        mime="text/csv",
+    )
+    if len(result) and st.checkbox("Preparar Word y Excel con todos los resultados filtrados"):
+        all_ids = tuple(int(i) for i in result["item"].tolist())
+        cc1, cc2 = st.columns(2)
+        cc1.download_button(
+            "⬇️ Word (" + str(len(result)) + ")",
+            data=_word_bytes(all_ids, ""),
+            file_name="experiencias_filtradas.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            width="stretch",
+        )
+        cc2.download_button(
+            "⬇️ Excel (" + str(len(result)) + ")",
+            data=_excel_bytes(all_ids),
+            file_name="experiencias_filtradas.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width="stretch",
+        )

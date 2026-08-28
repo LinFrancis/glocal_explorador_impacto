@@ -9,8 +9,22 @@ import plotly.express as px
 import streamlit as st
 
 from utils.components import render_news_card
-from utils.data import dimension_order, load_mapa_ubicaciones, load_noticias
-from utils.style import DIMENSION_COLOR_MAPS, inject, page_header, section_label, style_fig
+from utils.data import (
+    cap_categories,
+    classification_options,
+    dimension_order,
+    load_mapa_ubicaciones,
+    load_noticias,
+)
+from utils.style import (
+    DIMENSION_COLOR_MAPS,
+    MAP_CENTER_CHILE,
+    build_color_map,
+    inject,
+    page_header,
+    section_label,
+    style_fig,
+)
 
 st.set_page_config(page_title="Evolución Temporal", layout="wide")
 inject()
@@ -44,14 +58,11 @@ else:
         "Los gráficos de esta página reflejan solo el subconjunto con fecha.",
     )
 
-DIM_OPTIONS = {
-    "Categoría macro": "categoria_macro_primary",
-    "Eje GCAA": "eje_gcaa_primary",
-    "Atributo de resiliencia": "atributos_resiliencia_primary",
-}
+# Todas las clasificaciones del catálogo, no un subconjunto fijo.
+DIM_OPTIONS = classification_options()
 dim_label = st.selectbox("Desglosar por", list(DIM_OPTIONS.keys()))
 dim_col = DIM_OPTIONS[dim_label]
-color_map = DIMENSION_COLOR_MAPS.get(dim_col)
+color_map = DIMENSION_COLOR_MAPS.get(dim_col) or build_color_map(dimension_order(con_fecha, dim_col))
 
 # ==================================================================== SERIES POR AÑO
 section_label(f"Experiencias por año ({len(con_fecha)} con fecha)")
@@ -63,13 +74,20 @@ st.plotly_chart(fig1, width="stretch")
 
 section_label(f"Desglose por {dim_label.lower()} y año")
 raw_col = dim_col.replace("_primary", "")
-exploded = con_fecha.assign(**{raw_col: con_fecha[raw_col].str.split(";")}).explode(raw_col)
+exploded = con_fecha.assign(
+    **{raw_col: con_fecha[raw_col].fillna("").astype(str).str.split(";")}
+).explode(raw_col)
 exploded[raw_col] = exploded[raw_col].str.strip()
+if raw_col == "enfoque_genero":
+    # Cuenta multi-etiqueta no aplica: el enfoque de género es un único valor Sí/No.
+    exploded[raw_col] = exploded[raw_col].apply(lambda v: "Sí" if v.startswith("Sí") else "No")
 exploded = exploded[(exploded[raw_col] != "") & (exploded[raw_col].str.lower() != "no aplica")]
 
 if len(exploded):
+    # Dimensiones con decenas de valores (actores, beneficiarios...) colapsan la cola en "Otros".
+    exploded[raw_col], order_full = cap_categories(exploded[raw_col], dimension_order(con_fecha, dim_col))
     stacked = exploded.groupby(["anio", raw_col]).size().reset_index(name="n")
-    order = [c for c in dimension_order(con_fecha, dim_col) if c in stacked[raw_col].unique()]
+    order = [c for c in order_full if c in stacked[raw_col].unique()]
     fig2 = px.bar(
         stacked, x="anio", y="n", color=raw_col,
         category_orders={raw_col: order}, color_discrete_map=color_map,
@@ -175,7 +193,7 @@ fig_map = px.scatter_map(
     animation_frame="frame_anio", hover_name="titulo",
     hover_data={"lugar_texto": True, "lat": False, "lon": False, "marker_size": False},
     labels={"categoria_macro_primary": "Categoría macro", "frame_anio": "Año"},
-    zoom=1.4,
+    center=MAP_CENTER_CHILE, zoom=2.2,
 )
 fig_map.update_layout(map_style="open-street-map")
 style_fig(fig_map, height=560, title="Expansión geográfica acumulada, año a año", legend_title="Categoría macro")
@@ -196,11 +214,12 @@ st.caption("Cada punto es una experiencia individual, ordenada por su fecha real
 
 carril_label = st.selectbox("Agrupar carriles por", list(DIM_OPTIONS.keys()), index=0, key="carril_sel")
 carril_col = DIM_OPTIONS[carril_label]
-carril_order = dimension_order(con_fecha, carril_col)
-color_map_carril = DIMENSION_COLOR_MAPS.get(carril_col)
+capped_carril, carril_order = cap_categories(con_fecha[carril_col], dimension_order(con_fecha, carril_col))
+swim_df = con_fecha.assign(**{carril_col: capped_carril})
+color_map_carril = DIMENSION_COLOR_MAPS.get(carril_col) or build_color_map(carril_order)
 
 fig_swim = px.scatter(
-    con_fecha, x="fecha_parsed", y=carril_col, color=carril_col,
+    swim_df, x="fecha_parsed", y=carril_col, color=carril_col,
     category_orders={carril_col: carril_order}, color_discrete_map=color_map_carril,
     hover_name="titulo",
     hover_data={"fecha_parsed": "|%d %b %Y", carril_col: False},

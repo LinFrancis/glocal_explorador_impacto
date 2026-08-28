@@ -274,14 +274,27 @@ def cap_categories(values: pd.Series, order: list[str], max_slices: int = 24):
     return new_values, new_order
 
 
-def map_color_options() -> dict[str, str]:
-    """Etiqueta visible -> columna ``<col>_primary`` para el selector 'Colorear por' del mapa.
+# Dimensiones que son "clasificaciones" del catálogo: todo el registro salvo 'País', que es
+# geográfico y no vive como una columna única por experiencia en Base_Datos.
+CLASSIFICATION_COLS = [c for c in DIMENSION_REGISTRY if c != "pais"]
 
-    Cubre TODAS las dimensiones clasificables del catálogo (DIMENSION_REGISTRY), para que
-    el mapa ofrezca exactamente las mismas opciones de clasificación que el resto de la
-    plataforma y no una lista recortada.
+
+def classification_options() -> dict[str, str]:
+    """Etiqueta visible -> columna ``<col>_primary`` para CADA clasificación del catálogo
+    (todas las de DIMENSION_REGISTRY salvo 'País').
+
+    La usan tanto el mapa como la evolución temporal para ofrecer siempre la lista completa
+    de clasificaciones y no un subconjunto codificado a mano en cada página.
     """
-    return {meta["label"]: f"{col}_primary" for col, meta in DIMENSION_REGISTRY.items()}
+    return {DIMENSION_REGISTRY[c]["label"]: f"{c}_primary" for c in CLASSIFICATION_COLS}
+
+
+def map_color_options() -> dict[str, str]:
+    """Como :func:`classification_options` pero añade 'País' al final: el mapa sí puede
+    agrupar/colorear por país."""
+    opts = classification_options()
+    opts[DIMENSION_REGISTRY["pais"]["label"]] = "pais_primary"
+    return opts
 
 
 def attach_map_dimensions(mapa: pd.DataFrame, noticias: pd.DataFrame) -> pd.DataFrame:
@@ -357,16 +370,42 @@ def load_noticias() -> pd.DataFrame:
             df[col] = ""
         df[col] = df[col].fillna("")
 
-    # Columnas primarias (fuente única de verdad para vistas que necesitan 1 valor por fila)
-    for col in PRIMARY_DIMENSIONS:
-        df[f"{col}_primary"] = df[col].apply(primary_label)
-    df["enfoque_genero_binario"] = df["enfoque_genero"].apply(genero_label)
+    # Columnas primarias (fuente única de verdad para vistas que necesitan 1 valor por fila).
+    # Se calcula para TODAS las clasificaciones del catálogo, no solo tres, así cualquier
+    # página puede desglosar/colorear por cualquiera de ellas.
+    for col in CLASSIFICATION_COLS:
+        if col == "enfoque_genero":
+            continue
+        src = df[col] if col in df.columns else pd.Series([""] * len(df))
+        df[f"{col}_primary"] = src.fillna("").apply(primary_label)
+    df["enfoque_genero_primary"] = df["enfoque_genero"].apply(genero_label)
+    df["enfoque_genero_binario"] = df["enfoque_genero_primary"]
+
+    # Un único país por experiencia, derivado de la lista paralela de sitios.
+    sitios_pais = df["sitios_pais"] if "sitios_pais" in df.columns else pd.Series([""] * len(df))
+    df["pais"] = sitios_pais.apply(_join_unique)
 
     df["enlaces_externos_lista"] = df.get("enlaces_externos", pd.Series([None] * len(df))).apply(
         lambda v: [u.strip() for u in str(v).split("|") if u.strip()] if isinstance(v, str) and v.strip() else []
     )
 
     return df
+
+
+def _join_unique(value, sep=";", out=", ") -> str:
+    """Colapsa una celda multi-valor en un texto legible sin duplicados ni valores vacíos.
+
+    Se usa para derivar un único 'pais' por experiencia a partir de la lista paralela
+    'sitios_pais'. Devuelve 'Sin dato' si no queda nada.
+    """
+    drop = {"", "no especificado", "sin dato", "no aplica", "nan"}
+    parts, seen = [], set()
+    for p in str(value if value is not None else "").split(sep):
+        p = p.strip()
+        if p and p.lower() not in drop and p not in seen:
+            seen.add(p)
+            parts.append(p)
+    return out.join(parts) if parts else "Sin dato"
 
 
 def _split_parallel(value) -> list[str]:

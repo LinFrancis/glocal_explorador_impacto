@@ -9,7 +9,7 @@ import streamlit as st
 
 from utils.components import render_news_card
 from utils.data import load_cuencas, load_mapa_ubicaciones, load_noticias, load_subcuencas
-from utils.style import inject, page_header, section_label, style_fig
+from utils.style import MAP_CENTER_CHILE, inject, page_header, section_label, style_fig
 
 st.set_page_config(page_title="Cuencas", layout="wide")
 inject()
@@ -49,7 +49,7 @@ fig2 = px.scatter_map(
     ranking, lat="lat", lon="lon", size="n", color="n",
     hover_name="NOM_CUENCA", color_continuous_scale="Teal",
     labels={"n": "N° experiencias"},
-    zoom=3, size_max=40,
+    center=MAP_CENTER_CHILE, zoom=3.2, size_max=40,
 )
 fig2.update_layout(map_style="open-street-map")
 style_fig(fig2, height=480, title="Cuencas activas — tamaño y color = N° de experiencias")

@@ -17,6 +17,7 @@ from utils.data import (
 )
 from utils.style import (
     DIMENSION_COLOR_MAPS,
+    MAP_CENTER_CHILE,
     build_color_map,
     ensure_map_legend,
     inject,
@@ -96,7 +97,7 @@ if vista == "Coordenadas específicas":
         hover_name="titulo",
         hover_data={"lugar_texto": True, color_col: True, "lat": False, "lon": False},
         labels={color_col: color_label},
-        zoom=2.2,
+        center=MAP_CENTER_CHILE, zoom=3.0,
     )
     fig.update_layout(map_style="open-street-map")
     ensure_map_legend(fig, order, color_map)
@@ -118,7 +119,7 @@ elif vista == "Ciudad / localidad":
         category_orders={"dominante": order}, color_discrete_map=color_map,
         hover_name="lugar_texto", hover_data={"n": True, "lat": False, "lon": False},
         labels={"dominante": color_label, "n": "N° experiencias"},
-        zoom=2.2, size_max=32,
+        center=MAP_CENTER_CHILE, zoom=3.0, size_max=32,
     )
     fig.update_layout(map_style="open-street-map")
     ensure_map_legend(fig, order, color_map)
@@ -143,7 +144,7 @@ else:  # País
         category_orders={"dominante": order}, color_discrete_map=color_map,
         hover_name="pais", hover_data={"n": True, "lat": False, "lon": False},
         labels={"dominante": color_label, "n": "N° experiencias"},
-        zoom=1.1, size_max=45,
+        center=MAP_CENTER_CHILE, zoom=1.5, size_max=45,
     )
     fig.update_layout(map_style="open-street-map")
     ensure_map_legend(fig, order, color_map)

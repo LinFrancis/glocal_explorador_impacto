@@ -8,13 +8,18 @@ import plotly.express as px
 import streamlit as st
 
 from utils.data import get_options, load_mapa_ubicaciones, load_noticias
-from utils.style import inject, page_header, section_label, style_fig
+from utils.style import LOGO_PATH, inject, page_header, section_label, style_fig
 
 st.set_page_config(
     page_title="Explorador Impacto Glocal",
     layout="wide",
 )
 inject()
+
+if LOGO_PATH.exists():
+    lc1, lc2, lc3 = st.columns([1, 2, 1])
+    with lc2:
+        st.image(str(LOGO_PATH), width=260)
 
 page_header(
     "Explorador Impacto Glocal",
