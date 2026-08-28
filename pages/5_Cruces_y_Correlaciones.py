@@ -65,9 +65,11 @@ with tab1:
             merged, x="label_b", y="label_a", color_continuous_scale="Teal",
             labels={"label_a": label_a_name, "label_b": label_b_name, "color": "N° experiencias"},
         )
-        fig.update_coloraxes(colorbar_title="N° experiencias")
-        style_fig(fig, height=600, title=f"{label_a_name} cruzado con {label_b_name}")
-        st.plotly_chart(fig, use_container_width=True)
+        fig.update_coloraxes(colorbar_title="N° exp.")
+        n_a, n_b = merged["label_a"].nunique(), merged["label_b"].nunique()
+        height = max(380, min(700, 60 + 26 * n_a))
+        style_fig(fig, height=height, title=f"{label_a_name} cruzado con {label_b_name}")
+        st.plotly_chart(fig, width="stretch")
         st.caption(
             "Cada celda cuenta experiencias que tienen ambas etiquetas presentes "
             "(una experiencia con múltiples etiquetas se cuenta en todas sus combinaciones)."
@@ -78,97 +80,88 @@ with tab2:
     st.markdown(
         "Flujo desde la categoría macro (de qué habla), pasando por el eje GCAA (si conecta con "
         "acción climática), hasta el atributo de resiliencia que fortalece. Solo incluye experiencias "
-        "donde ambos ejes climático y de resiliencia aplican (no 'No aplica')."
+        "donde ambos ejes climático y de resiliencia aplican (no 'No aplica'). Usa la misma etiqueta "
+        "principal por experiencia que el resto de la plataforma (mapa incluido)."
     )
     sub = df[
-        (df["eje_gcaa"].str.strip().str.lower() != "no aplica")
-        & (df["atributos_resiliencia"].str.strip().str.lower() != "no aplica")
+        (df["eje_gcaa_primary"].str.lower() != "no aplica")
+        & (df["atributos_resiliencia_primary"].str.lower() != "no aplica")
     ].copy()
-
-    def _primary(v):
-        if not isinstance(v, str) or not v.strip():
-            return "Sin dato"
-        return v.split(";")[0].strip()
-
-    sub["macro_p"] = sub["categoria_macro"].apply(_primary)
-    sub["gcaa_p"] = sub["eje_gcaa"].apply(_primary)
-    sub["resil_p"] = sub["atributos_resiliencia"].apply(_primary)
 
     if len(sub) == 0:
         st.info("No hay experiencias que cumplan ambas condiciones.")
     else:
-        macros = sorted(sub["macro_p"].unique())
-        gcaas = sorted(sub["gcaa_p"].unique())
-        resils = sorted(sub["resil_p"].unique())
+        macros = sorted(sub["categoria_macro_primary"].unique())
+        gcaas = sorted(sub["eje_gcaa_primary"].unique())
+        resils = sorted(sub["atributos_resiliencia_primary"].unique())
 
         nodes = macros + gcaas + resils
         idx = {n: i for i, n in enumerate(nodes)}
 
-        link1 = sub.groupby(["macro_p", "gcaa_p"]).size().reset_index(name="n")
-        link2 = sub.groupby(["gcaa_p", "resil_p"]).size().reset_index(name="n")
+        link1 = sub.groupby(["categoria_macro_primary", "eje_gcaa_primary"]).size().reset_index(name="n")
+        link2 = sub.groupby(["eje_gcaa_primary", "atributos_resiliencia_primary"]).size().reset_index(name="n")
 
-        sources = [idx[m] for m in link1["macro_p"]] + [idx[g] for g in link2["gcaa_p"]]
-        targets = [idx[g] for g in link1["gcaa_p"]] + [idx[r] for r in link2["resil_p"]]
+        sources = [idx[m] for m in link1["categoria_macro_primary"]] + [idx[g] for g in link2["eje_gcaa_primary"]]
+        targets = [idx[g] for g in link1["eje_gcaa_primary"]] + [idx[r] for r in link2["atributos_resiliencia_primary"]]
         values = link1["n"].tolist() + link2["n"].tolist()
 
         colors = ["#0B6E4F"] * len(macros) + ["#1F6FB2"] * len(gcaas) + ["#B2531F"] * len(resils)
 
         fig = go.Figure(go.Sankey(
-            node=dict(label=nodes, color=colors, pad=15, thickness=16),
+            node=dict(label=nodes, color=colors, pad=14, thickness=14),
             link=dict(source=sources, target=targets, value=values),
         ))
-        style_fig(fig, height=650, title="Flujo: categoría macro → eje GCAA → atributo de resiliencia")
-        st.plotly_chart(fig, use_container_width=True)
+        style_fig(fig, height=520, title="Flujo: categoría macro → eje GCAA → atributo de resiliencia")
+        st.plotly_chart(fig, width="stretch")
         st.caption(
-            f"Basado en {len(sub)} experiencias con eje GCAA y atributo de resiliencia aplicables "
-            "(etiqueta primaria cuando hay más de una). Verde = categoría macro, azul = eje GCAA, "
-            "naranjo = atributo de resiliencia."
+            f"Basado en {len(sub)} experiencias con eje GCAA y atributo de resiliencia aplicables. "
+            "Verde = categoría macro, azul = eje GCAA, naranjo = atributo de resiliencia."
         )
 
 # ---------------------------------------------------------------- 3. Vacíos
 with tab3:
     st.markdown("Objetivos y sub-atributos con menor cobertura en el catálogo — señales de dónde falta trabajo documentado.")
-    c1, c2 = st.columns(2)
-    with c1:
-        obj = explode_multilabel(df, "objetivo_gcaa")
-        obj = obj[obj["label"].str.lower() != "no aplica"]
-        counts = obj["label"].value_counts().reset_index()
-        counts.columns = ["Objetivo GCAA", "N"]
-        counts = counts.sort_values("N")
-        fig = px.bar(
-            counts.head(15), x="N", y="Objetivo GCAA", orientation="h",
-            color="N", color_continuous_scale="OrRd", labels={"N": "N° experiencias"},
-        )
-        fig.update_layout(coloraxis_showscale=False)
-        style_fig(fig, height=500, title="Objetivos GCAA menos frecuentes (top 15 presentes en los datos)", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        _, df_sub_full = resilience_counts(df)
-        df_sub_full = df_sub_full.sort_values("n")
-        fig2 = px.bar(
-            df_sub_full, x="n", y="subatributo", orientation="h",
-            color="n", color_continuous_scale="OrRd", labels={"n": "N° experiencias", "subatributo": "Sub-atributo"},
-        )
-        fig2.update_layout(coloraxis_showscale=False)
-        style_fig(
-            fig2, height=560,
-            title="Los 19 sub-atributos de resiliencia (CR2), de menor a mayor frecuencia",
-            showlegend=False,
-        )
-        st.plotly_chart(fig2, use_container_width=True)
-        n_cero = (df_sub_full["n"] == 0).sum()
-        if n_cero:
-            faltantes = ", ".join(df_sub_full.loc[df_sub_full["n"] == 0, "subatributo"])
-            st.caption(f"{n_cero} sub-atributo(s) sin ninguna experiencia registrada: {faltantes}.")
+
+    obj = explode_multilabel(df, "objetivo_gcaa")
+    obj = obj[obj["label"].str.lower() != "no aplica"]
+    counts = obj["label"].value_counts().reset_index()
+    counts.columns = ["Objetivo GCAA", "N"]
+    counts = counts.sort_values("N")
+    fig = px.bar(
+        counts, x="N", y="Objetivo GCAA", orientation="h",
+        color="N", color_continuous_scale="OrRd", labels={"N": "N° experiencias"},
+    )
+    fig.update_layout(coloraxis_showscale=False)
+    style_fig(fig, height=520, title="Objetivos GCAA presentes en el catálogo, de menor a mayor frecuencia", showlegend=False)
+    st.plotly_chart(fig, width="stretch")
+
+    _, df_sub_full = resilience_counts(df)
+    df_sub_full = df_sub_full.sort_values("n")
+    fig2 = px.bar(
+        df_sub_full, x="n", y="subatributo", orientation="h",
+        color="n", color_continuous_scale="OrRd", labels={"n": "N° experiencias", "subatributo": "Sub-atributo"},
+    )
+    fig2.update_layout(coloraxis_showscale=False)
+    style_fig(
+        fig2, height=520,
+        title="Los 19 sub-atributos de resiliencia (CR2), de menor a mayor frecuencia",
+        showlegend=False,
+    )
+    st.plotly_chart(fig2, width="stretch")
+    n_cero = (df_sub_full["n"] == 0).sum()
+    if n_cero:
+        faltantes = ", ".join(df_sub_full.loc[df_sub_full["n"] == 0, "subatributo"])
+        st.caption(f"{n_cero} sub-atributo(s) sin ninguna experiencia registrada: {faltantes}.")
 
 # ---------------------------------------------------------------- 4. Lente de género
 with tab4:
-    genero_df = df[df["enfoque_genero"].astype(str).str.startswith("Sí")]
+    genero_df = df[df["enfoque_genero_binario"] == "Sí"]
     st.markdown(f"**{len(genero_df)} experiencias** tienen un enfoque de género explícito (de {len(df)} totales, {len(genero_df)/len(df):.1%}).")
     if len(genero_df):
         st.dataframe(
-            genero_df[["item", "titulo", "categoria_macro", "beneficiarios_directos", "enfoque_genero", "anio"]],
-            hide_index=True, use_container_width=True,
+            genero_df[["item", "titulo", "categoria_macro_primary", "beneficiarios_directos", "enfoque_genero", "anio"]]
+            .rename(columns={"categoria_macro_primary": "categoria_macro"}),
+            hide_index=True, width="stretch", height=280,
         )
     else:
         st.info("No hay experiencias marcadas con enfoque de género explícito.")
@@ -183,36 +176,24 @@ with tab5:
 
     df_attr, df_sub = resilience_counts(df)
 
-    c1, c2 = st.columns(2)
+    fig_attr = px.bar_polar(
+        df_attr, r="n", theta="atributo", color="atributo",
+        category_orders={"atributo": list(RESILIENCE_TAXONOMY.keys())},
+        labels={"n": "N° experiencias", "atributo": "Atributo"},
+    )
+    fig_attr.update_traces(hovertemplate="%{theta}<br>N° experiencias: %{r}<extra></extra>")
+    style_fig(fig_attr, height=440, title="Apariciones por atributo de resiliencia (7 atributos CR2)", legend_title="Atributo")
+    st.plotly_chart(fig_attr, width="stretch")
 
-    with c1:
-        fig_attr = px.bar_polar(
-            df_attr, r="n", theta="atributo", color="atributo",
-            category_orders={"atributo": list(RESILIENCE_TAXONOMY.keys())},
-            labels={"n": "N° experiencias", "atributo": "Atributo"},
-        )
-        fig_attr.update_traces(hovertemplate="%{theta}<br>N° experiencias: %{r}<extra></extra>")
-        style_fig(
-            fig_attr, height=520,
-            title="Apariciones por atributo de resiliencia (7 atributos CR2)",
-            legend_title="Atributo",
-        )
-        st.plotly_chart(fig_attr, use_container_width=True)
-
-    with c2:
-        sub_order = [s for subs in RESILIENCE_TAXONOMY.values() for s in subs]
-        fig_sub = px.bar_polar(
-            df_sub, r="n", theta="subatributo", color="atributo",
-            category_orders={"subatributo": sub_order, "atributo": list(RESILIENCE_TAXONOMY.keys())},
-            labels={"n": "N° experiencias", "subatributo": "Sub-atributo", "atributo": "Atributo"},
-        )
-        fig_sub.update_traces(hovertemplate="%{theta}<br>N° experiencias: %{r}<extra></extra>")
-        style_fig(
-            fig_sub, height=520,
-            title="Apariciones por sub-atributo de resiliencia (19 sub-atributos CR2)",
-            legend_title="Atributo",
-        )
-        st.plotly_chart(fig_sub, use_container_width=True)
+    sub_order = [s for subs in RESILIENCE_TAXONOMY.values() for s in subs]
+    fig_sub = px.bar_polar(
+        df_sub, r="n", theta="subatributo", color="atributo",
+        category_orders={"subatributo": sub_order, "atributo": list(RESILIENCE_TAXONOMY.keys())},
+        labels={"n": "N° experiencias", "subatributo": "Sub-atributo", "atributo": "Atributo"},
+    )
+    fig_sub.update_traces(hovertemplate="%{theta}<br>N° experiencias: %{r}<extra></extra>")
+    style_fig(fig_sub, height=560, title="Apariciones por sub-atributo de resiliencia (19 sub-atributos CR2)", legend_title="Atributo")
+    st.plotly_chart(fig_sub, width="stretch")
 
     st.caption(
         "Fuente: Race to Resilience Technical Secretariat (2023), \"Introduction to Resilience Attributes, "

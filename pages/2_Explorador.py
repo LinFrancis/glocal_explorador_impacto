@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 
+from utils.components import render_news_card
 from utils.data import filter_by_multilabel, get_options, load_noticias
 from utils.style import inject, page_header, section_label
 
@@ -15,11 +16,18 @@ page_header(
     "Búsqueda multicriterio",
     "Explorador Avanzado",
     "Combina cualquier número de filtros. Dentro de un mismo filtro se combina con 'o'; entre "
-    "filtros distintos, con 'y'.",
+    "filtros distintos, con 'y'. Haz clic en una fila de la tabla para ver la ficha completa.",
 )
 
 df = load_noticias()
 ACTORES_COL = "actores_normalizados" if "actores_normalizados" in df.columns else "actores"
+
+
+@st.dialog("Ficha de la experiencia", width="large")
+def _show_dialog(item_id: int):
+    row = df[df["item"] == item_id].iloc[0]
+    render_news_card(row)
+
 
 with st.sidebar:
     st.markdown("**Filtros**")
@@ -87,54 +95,52 @@ if f_anios is not None:
     result = result[mask_rango]
 
 # ------------------------------------------------------------ resultados
-section_label("Resultados")
-st.metric("Experiencias encontradas", f"{len(result)} de {len(df)}")
+c1, c2 = st.columns([3, 1])
+c1.metric("Experiencias encontradas", f"{len(result)} de {len(df)}")
+with c2:
+    st.write("")
+    st.download_button(
+        "Descargar CSV",
+        data=result.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+        file_name="experiencias_filtradas.csv",
+        mime="text/csv",
+        width="stretch",
+    )
 
 cols_mostrar = [
-    "item", "titulo", "categoria_macro", "categorias", "metodologia",
-    "eje_gcaa", "atributos_resiliencia", "beneficiarios_directos",
-    "enfoque_genero", "lugar", "anio", "url_noticia",
+    "item", "titulo", "categoria_macro_primary", "metodologia",
+    "eje_gcaa_primary", "atributos_resiliencia_primary",
+    "enfoque_genero", "lugar", "anio",
 ]
 cols_mostrar = [c for c in cols_mostrar if c in result.columns]
+display_df = result[cols_mostrar].rename(columns={
+    "categoria_macro_primary": "categoria_macro",
+    "eje_gcaa_primary": "eje_gcaa",
+    "atributos_resiliencia_primary": "atributos_resiliencia",
+})
 
-st.dataframe(
-    result[cols_mostrar],
-    use_container_width=True,
+event = st.dataframe(
+    display_df,
+    width="stretch",
     hide_index=True,
+    height=460,
+    on_select="rerun",
+    selection_mode="single-row",
     column_config={
         "item": st.column_config.NumberColumn("N.", width="small"),
         "titulo": st.column_config.TextColumn("Título", width="medium"),
-        "url_noticia": st.column_config.LinkColumn("Ver en el catálogo", display_text="Abrir"),
-        "anio": st.column_config.NumberColumn("Año", format="%d"),
+        "categoria_macro": st.column_config.TextColumn("Categoría macro", width="medium"),
+        "metodologia": st.column_config.TextColumn("Metodología", width="medium"),
+        "eje_gcaa": st.column_config.TextColumn("Eje GCAA", width="medium"),
+        "atributos_resiliencia": st.column_config.TextColumn("Atributo resiliencia", width="medium"),
+        "enfoque_genero": st.column_config.TextColumn("Género", width="small"),
+        "lugar": st.column_config.TextColumn("Lugar", width="medium"),
+        "anio": st.column_config.NumberColumn("Año", format="%d", width="small"),
     },
 )
+st.caption("Categoría, eje GCAA y atributo de resiliencia muestran la etiqueta principal cuando una experiencia tiene más de una.")
 
-st.download_button(
-    "Descargar resultados filtrados (CSV)",
-    data=result[cols_mostrar].to_csv(index=False).encode("utf-8-sig"),
-    file_name="experiencias_filtradas.csv",
-    mime="text/csv",
-)
-
-with st.expander("Ver detalle completo de una experiencia"):
-    if len(result):
-        item_sel = st.selectbox(
-            "Elegir experiencia", result["item"].tolist(),
-            format_func=lambda i: f"#{i} — " + result.loc[result['item'] == i, 'titulo'].values[0],
-        )
-        row = result[result["item"] == item_sel].iloc[0]
-        st.markdown(f"### {row['titulo']}")
-        st.write(row.get("contenido_completo", ""))
-        st.json({
-            "categoria_macro": row["categoria_macro"],
-            "categorias": row["categorias"],
-            "metodologia": row["metodologia"],
-            "actores": row.get(ACTORES_COL, row.get("actores")),
-            "eje_gcaa": row["eje_gcaa"],
-            "objetivo_gcaa": row["objetivo_gcaa"],
-            "atributos_resiliencia": row["atributos_resiliencia"],
-            "beneficiarios_directos": row["beneficiarios_directos"],
-            "beneficiarios_indirectos": row["beneficiarios_indirectos"],
-            "enfoque_genero": row["enfoque_genero"],
-            "lugar": row["lugar"],
-        })
+selected_rows = event.selection.rows if event and event.selection else []
+if selected_rows:
+    item_id = int(display_df.iloc[selected_rows[0]]["item"])
+    _show_dialog(item_id)

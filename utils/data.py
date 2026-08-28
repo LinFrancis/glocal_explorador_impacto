@@ -70,6 +70,44 @@ def parse_spanish_date(value):
         return pd.NaT
 
 
+def genero_label(value) -> str:
+    """'Sí'/'No' binario a partir del texto libre de enfoque_genero (fuente única de verdad)."""
+    return "Sí" if isinstance(value, str) and value.strip().startswith("Sí") else "No"
+
+
+def primary_label(value) -> str:
+    """Etiqueta única y canónica de una celda multi-etiqueta (para mapas y agregaciones de un solo color).
+
+    Fuente central de verdad: cualquier visualización que necesite UN valor por
+    experiencia (color de un punto, barra dominante, etc.) debe usar esta función,
+    para que mapa / gráficos / tablas nunca muestren conjuntos de categorías distintos.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return "Sin dato"
+    first = value.split(";")[0].strip()
+    return first if first else "Sin dato"
+
+
+PRIMARY_DIMENSIONS = ["categoria_macro", "eje_gcaa", "atributos_resiliencia"]
+
+# Registro único de dimensiones filtrables/agrupables: nombre de columna -> metadatos.
+# Toda página que ofrezca "elegir dimensión" debe leer este registro, no inventar su propia lista.
+DIMENSION_REGISTRY = {
+    "categoria_macro": {"label": "Categoría macro", "kind": "multilabel", "primary_col": "categoria_macro_primary"},
+    "categorias": {"label": "Categoría temática", "kind": "multilabel", "primary_col": None},
+    "metodologia": {"label": "Metodología", "kind": "multilabel", "primary_col": None},
+    "actores_normalizados": {"label": "Actores institucionales", "kind": "multilabel", "primary_col": None},
+    "eje_gcaa": {"label": "Eje GCAA", "kind": "multilabel", "primary_col": "eje_gcaa_primary"},
+    "objetivo_gcaa": {"label": "Objetivo GCAA", "kind": "multilabel", "primary_col": None},
+    "atributos_resiliencia": {"label": "Atributo de resiliencia", "kind": "multilabel", "primary_col": "atributos_resiliencia_primary"},
+    "subatributos_resiliencia": {"label": "Sub-atributo de resiliencia", "kind": "multilabel", "primary_col": None},
+    "beneficiarios_directos": {"label": "Beneficiarios directos", "kind": "multilabel", "primary_col": None},
+    "beneficiarios_indirectos": {"label": "Beneficiarios indirectos", "kind": "multilabel", "primary_col": None},
+    "enfoque_genero": {"label": "Enfoque de género", "kind": "single", "primary_col": None},
+    "pais": {"label": "País", "kind": "single", "primary_col": None},
+}
+
+
 def _normalize_label(label):
     label = label.strip()
     return _METODOLOGIA_ALIASES.get(label.lower(), label)
@@ -111,12 +149,26 @@ def load_noticias() -> pd.DataFrame:
             df[col] = ""
         df[col] = df[col].fillna("")
 
+    # Columnas primarias (fuente única de verdad para vistas que necesitan 1 valor por fila)
+    for col in PRIMARY_DIMENSIONS:
+        df[f"{col}_primary"] = df[col].apply(primary_label)
+    df["enfoque_genero_binario"] = df["enfoque_genero"].apply(genero_label)
+
+    df["enlaces_externos_lista"] = df.get("enlaces_externos", pd.Series([None] * len(df))).apply(
+        lambda v: [u.strip() for u in str(v).split("|") if u.strip()] if isinstance(v, str) and v.strip() else []
+    )
+
     return df
 
 
 @st.cache_data(show_spinner=False)
 def load_mapa_ubicaciones() -> pd.DataFrame:
-    return pd.read_excel(EXCEL_PATH, sheet_name="Mapa_Ubicaciones", engine="openpyxl")
+    df = pd.read_excel(EXCEL_PATH, sheet_name="Mapa_Ubicaciones", engine="openpyxl")
+    df["pais"] = df["coincidencia_osm"].apply(extract_country).fillna("Sin dato")
+    for col in ("categoria_macro", "eje_gcaa"):
+        if col in df.columns:
+            df[f"{col}_primary"] = df[col].apply(primary_label)
+    return df
 
 
 @st.cache_data(show_spinner=False)
@@ -204,7 +256,19 @@ def extract_country(display_name: str) -> str | None:
     return last or None
 
 
+_MESES_INV = {v: k for k, v in MESES.items()}
+
+
+def format_fecha_es(ts) -> str:
+    """Formatea una fecha como 'D de Mes de AAAA'. Devuelve texto neutro si no hay fecha."""
+    if ts is None or (hasattr(ts, "year") is False) or pd.isna(ts):
+        return "Fecha no disponible"
+    mes = _MESES_INV.get(ts.month, "")
+    return f"{ts.day} de {mes.capitalize()} de {ts.year}"
+
+
 COLUMN_LABELS = {
+    "pais": "País",
     "categorias": "Categoría temática",
     "categoria_macro": "Categoría macro",
     "metodologia": "Metodología de facilitación",

@@ -7,12 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plotly.express as px
 import streamlit as st
 
-from utils.data import (
-    extract_country,
-    get_options,
-    load_mapa_ubicaciones,
-    load_noticias,
-)
+from utils.data import get_options, load_mapa_ubicaciones, load_noticias
 from utils.style import inject, page_header, section_label, style_fig
 
 st.set_page_config(
@@ -40,8 +35,7 @@ n_genero = df["enfoque_genero"].astype(str).str.startswith("Sí").sum()
 n_con_fecha = df["tiene_fecha"].sum()
 n_puntos_geo = mapa["lat"].notna().sum()
 n_lugares_unicos = mapa.loc[mapa["lat"].notna(), "lugar_texto"].nunique()
-paises = mapa.loc[mapa["lat"].notna(), "coincidencia_osm"].apply(extract_country).dropna()
-n_paises = paises.nunique()
+n_paises = mapa.loc[mapa["lat"].notna(), "pais"].nunique()
 actores_col = "actores_normalizados" if "actores_normalizados" in df.columns else "actores"
 n_actores = len(get_options(df, actores_col))
 
@@ -64,8 +58,6 @@ c10.metric("Con fecha registrada", f"{n_con_fecha}", f"de {total} totales")
 rango = f"{int(df['anio'].min())}–{int(df['anio'].max())}" if n_con_fecha else "s/d"
 c11.metric("Rango temporal", rango)
 c12.metric("Cuencas vinculadas", f"{mapa['COD_CUENCA'].nunique() if 'COD_CUENCA' in mapa.columns else '—'}")
-
-st.write("")
 
 left, right = st.columns([3, 2])
 
@@ -114,8 +106,8 @@ with right:
         labels={"N": "N° experiencias"},
     )
     fig.update_layout(coloraxis_showscale=False)
-    style_fig(fig, height=380, title="Experiencias por categoría macro", showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    style_fig(fig, height=320, title="Experiencias por categoría macro", showlegend=False)
+    st.plotly_chart(fig, width="stretch")
 
 st.divider()
 st.caption(

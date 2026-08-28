@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import plotly.express as px
 import streamlit as st
 
-from utils.data import extract_country, load_mapa_ubicaciones, load_noticias
+from utils.data import genero_label, load_mapa_ubicaciones, load_noticias
 from utils.style import inject, page_header, style_fig
 
 st.set_page_config(page_title="Mapa", layout="wide")
@@ -15,37 +15,25 @@ inject()
 page_header(
     "Vista geográfica",
     "Mapa de experiencias",
-    "Tres niveles de vista: país, ciudad/localidad, y coordenadas específicas.",
+    "Tres niveles de vista: país, ciudad/localidad y coordenadas específicas. Las categorías usadas "
+    "aquí son las mismas que en el resto de la plataforma (una etiqueta principal por experiencia).",
 )
 
 mapa_full = load_mapa_ubicaciones()
 df = load_noticias()
 
+# `pais`, `categoria_macro_primary` y `eje_gcaa_primary` ya vienen calculados de forma centralizada
+# en load_mapa_ubicaciones(); solo se agregan aquí las dimensiones que no viven en esa hoja.
 mapa = mapa_full[mapa_full["lat"].notna()].copy()
-extra = df[["item", "atributos_resiliencia", "enfoque_genero"]]
-mapa = mapa.merge(extra, on="item", how="left")
-
-
-def _primary(value):
-    if not isinstance(value, str) or not value.strip():
-        return "Sin dato"
-    first = value.split(";")[0].strip()
-    return first if first else "Sin dato"
-
-
-mapa["categoria_macro_p"] = mapa["categoria_macro"].apply(_primary)
-mapa["eje_gcaa_p"] = mapa["eje_gcaa"].apply(_primary)
-mapa["atributos_resiliencia_p"] = mapa["atributos_resiliencia"].apply(_primary)
-mapa["enfoque_genero_p"] = mapa["enfoque_genero"].apply(
-    lambda v: "Sí" if isinstance(v, str) and v.startswith("Sí") else "No"
-)
-mapa["pais"] = mapa["coincidencia_osm"].apply(extract_country).fillna("Sin dato")
+extra = df[["item", "atributos_resiliencia_primary", "enfoque_genero"]].copy()
+extra["enfoque_genero_primary"] = extra["enfoque_genero"].apply(genero_label)
+mapa = mapa.merge(extra.drop(columns="enfoque_genero"), on="item", how="left")
 
 DIM_OPTIONS = {
-    "Categoría macro": "categoria_macro_p",
-    "Eje GCAA": "eje_gcaa_p",
-    "Atributo de resiliencia": "atributos_resiliencia_p",
-    "Enfoque de género": "enfoque_genero_p",
+    "Categoría macro": "categoria_macro_primary",
+    "Eje GCAA": "eje_gcaa_primary",
+    "Atributo de resiliencia": "atributos_resiliencia_primary",
+    "Enfoque de género": "enfoque_genero_primary",
 }
 
 c1, c2 = st.columns([2, 1])
@@ -57,6 +45,8 @@ with c2:
     color_label = st.selectbox("Colorear por", list(DIM_OPTIONS.keys()))
 color_col = DIM_OPTIONS[color_label]
 
+MAP_HEIGHT = 540
+
 if vista == "Coordenadas específicas":
     fig = px.scatter_map(
         mapa, lat="lat", lon="lon", color=color_col,
@@ -65,18 +55,16 @@ if vista == "Coordenadas específicas":
         labels={color_col: color_label},
         zoom=2.2,
     )
-    fig.update_layout(map_style="open-street-map", margin=dict(l=0, r=0, t=54, b=0))
-    style_fig(fig, height=680, title=f"Ubicación exacta de cada experiencia, coloreado por {color_label.lower()}", legend_title=color_label)
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(map_style="open-street-map")
+    style_fig(fig, height=MAP_HEIGHT, title=f"Ubicación exacta, coloreado por {color_label.lower()}", legend_title=color_label)
+    st.plotly_chart(fig, width="stretch")
     st.caption(f"{len(mapa)} puntos geolocalizados, de {mapa['lugar_texto'].nunique()} lugares únicos.")
 
 elif vista == "Ciudad / localidad":
     grp = (
         mapa.groupby("lugar_texto")
         .agg(
-            lat=("lat", "mean"),
-            lon=("lon", "mean"),
-            n=("item", "count"),
+            lat=("lat", "mean"), lon=("lon", "mean"), n=("item", "count"),
             dominante=(color_col, lambda s: s.mode().iat[0] if not s.mode().empty else "Sin dato"),
         )
         .reset_index()
@@ -85,11 +73,11 @@ elif vista == "Ciudad / localidad":
         grp, lat="lat", lon="lon", size="n", color="dominante",
         hover_name="lugar_texto", hover_data={"n": True, "lat": False, "lon": False},
         labels={"dominante": color_label, "n": "N° experiencias"},
-        zoom=2.2, size_max=38,
+        zoom=2.2, size_max=32,
     )
-    fig.update_layout(map_style="open-street-map", margin=dict(l=0, r=0, t=54, b=0))
-    style_fig(fig, height=680, title="Experiencias agrupadas por ciudad / localidad", legend_title=color_label)
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(map_style="open-street-map")
+    style_fig(fig, height=MAP_HEIGHT, title="Experiencias agrupadas por ciudad / localidad", legend_title=color_label)
+    st.plotly_chart(fig, width="stretch")
     st.caption(
         f"{len(grp)} lugares agregados. Color = {color_label.lower()} más frecuente en ese lugar; "
         "tamaño = N° de experiencias."
@@ -99,9 +87,7 @@ else:  # País
     grp = (
         mapa.groupby("pais")
         .agg(
-            lat=("lat", "mean"),
-            lon=("lon", "mean"),
-            n=("item", "count"),
+            lat=("lat", "mean"), lon=("lon", "mean"), n=("item", "count"),
             dominante=(color_col, lambda s: s.mode().iat[0] if not s.mode().empty else "Sin dato"),
         )
         .reset_index()
@@ -110,14 +96,14 @@ else:  # País
         grp, lat="lat", lon="lon", size="n", color="dominante",
         hover_name="pais", hover_data={"n": True, "lat": False, "lon": False},
         labels={"dominante": color_label, "n": "N° experiencias"},
-        zoom=1.2, size_max=55,
+        zoom=1.1, size_max=45,
     )
-    fig.update_layout(map_style="open-street-map", margin=dict(l=0, r=0, t=54, b=0))
-    style_fig(fig, height=560, title="Experiencias agrupadas por país", legend_title=color_label)
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(map_style="open-street-map")
+    style_fig(fig, height=MAP_HEIGHT, title="Experiencias agrupadas por país", legend_title=color_label)
+    st.plotly_chart(fig, width="stretch")
     st.dataframe(
         grp[["pais", "n"]].sort_values("n", ascending=False).rename(columns={"pais": "País", "n": "N° experiencias"}),
-        hide_index=True, use_container_width=True,
+        hide_index=True, width="stretch", height=280,
     )
 
 with st.expander("Por qué hay menos de 350 puntos en pantalla"):

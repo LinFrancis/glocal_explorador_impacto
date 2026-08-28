@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Sistema de diseño compartido: tipografía, paleta, tarjetas y tema de gráficos."""
+"""Sistema de diseño v2: tipografía proporcional, spacing compacto, componentes reutilizables."""
+import math
+
 import streamlit as st
 
 FONT_FAMILY = "'Montserrat', -apple-system, 'Segoe UI', sans-serif"
@@ -10,22 +12,35 @@ COLOR_TEXT = "#111827"
 COLOR_MUTED = "#6B7280"
 COLOR_BORDER = "#E4E7EB"
 COLOR_CARD_BG = "#F7F8FA"
-COLOR_SIDEBAR_BG = "#F4F5F7"
+COLOR_SIDEBAR_BG = "#F9FAFB"
 
-SEQUENTIAL_SCALE = "Teal"
-DIVERGING_SCALE = "RdYlGn"
 CATEGORY_PALETTE = [
     "#0B6E4F", "#1F6FB2", "#B2531F", "#6B4FA0",
     "#B01E4B", "#3F7D20", "#7A5B1E", "#2B2D42",
+    "#0E7C7B", "#9A3B7D",
 ]
 
-PLOTLY_FONT = dict(family=FONT_FAMILY, color=COLOR_TEXT, size=13)
-
+# ------------------------------------------------------------------ CSS global
 _CSS = f"""
 <style>
+:root {{
+    --gm-primary: {COLOR_PRIMARY};
+    --gm-border: {COLOR_BORDER};
+}}
+
 html, body, [class*="css"], [data-testid="stAppViewContainer"] {{
     font-family: {FONT_FAMILY} !important;
 }}
+
+/* -------- spacing compacto -------- */
+.block-container {{
+    padding-top: 1.6rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 1400px;
+}}
+div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column"] {{ gap: 0.5rem; }}
+hr {{ margin: 0.6rem 0 !important; }}
+.stTabs {{ margin-top: -0.3rem; }}
 
 h1, h2, h3, h4, h5, h6 {{
     font-family: {FONT_FAMILY} !important;
@@ -33,98 +48,170 @@ h1, h2, h3, h4, h5, h6 {{
     letter-spacing: -0.01em;
     color: {COLOR_TEXT};
 }}
+h2 {{ font-size: 1.15rem !important; margin: 0.3rem 0 0.4rem 0 !important; }}
+h3 {{ font-size: 1.0rem !important; margin: 0.2rem 0 0.3rem 0 !important; }}
+p {{ margin-bottom: 0.4rem; }}
 
+/* -------- sidebar -------- */
 [data-testid="stSidebar"] {{
     background-color: {COLOR_SIDEBAR_BG};
     border-right: 1px solid {COLOR_BORDER};
 }}
+[data-testid="stSidebar"] .block-container {{ padding-top: 1.2rem; }}
 
+/* -------- KPI cards -------- */
 [data-testid="stMetric"] {{
     background: #FFFFFF;
     border: 1px solid {COLOR_BORDER};
     border-radius: 10px;
-    padding: 14px 18px 10px 18px;
+    padding: 10px 14px 8px 14px;
     box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
 }}
 [data-testid="stMetricLabel"] {{
-    font-size: 0.80rem;
+    font-size: 0.72rem;
     font-weight: 600;
     color: {COLOR_MUTED};
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
 }}
 [data-testid="stMetricValue"] {{
     font-weight: 700;
+    font-size: 1.5rem !important;
     color: {COLOR_TEXT};
 }}
+[data-testid="stMetricDelta"] {{ font-size: 0.72rem; }}
 
+/* -------- header banner -------- */
 .gm-header {{
-    padding: 20px 24px;
-    margin-bottom: 18px;
-    border-radius: 12px;
+    padding: 14px 20px;
+    margin-bottom: 12px;
+    border-radius: 10px;
     background: linear-gradient(120deg, {COLOR_PRIMARY_DARK} 0%, {COLOR_PRIMARY} 100%);
 }}
 .gm-header .gm-eyebrow {{
     color: rgba(255,255,255,0.72);
-    font-size: 0.78rem;
+    font-size: 0.70rem;
     font-weight: 600;
-    letter-spacing: 0.10em;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
-    margin: 0 0 4px 0;
+    margin: 0 0 2px 0;
 }}
 .gm-header h1 {{
     color: #FFFFFF !important;
-    margin: 0 0 6px 0 !important;
-    font-size: 1.65rem !important;
+    margin: 0 0 3px 0 !important;
+    font-size: 1.35rem !important;
 }}
 .gm-header p {{
     color: rgba(255,255,255,0.88);
     margin: 0;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     max-width: 900px;
+    line-height: 1.35;
 }}
 
+/* -------- section label -------- */
 .gm-section-label {{
-    font-size: 0.76rem;
+    font-size: 0.72rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     color: {COLOR_MUTED};
-    margin: 6px 0 2px 0;
+    margin: 4px 0 2px 0;
     border-bottom: 2px solid {COLOR_PRIMARY};
     display: inline-block;
     padding-bottom: 2px;
 }}
 
+/* -------- cards / news detail -------- */
 .gm-card {{
     background: {COLOR_CARD_BG};
     border: 1px solid {COLOR_BORDER};
     border-radius: 10px;
-    padding: 16px 18px;
-    margin-bottom: 10px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
 }}
-
 .gm-badge {{
     display: inline-block;
     background: {COLOR_PRIMARY};
     color: #FFFFFF;
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 600;
     padding: 2px 9px;
     border-radius: 999px;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.01em;
+    margin: 0 4px 4px 0;
+}}
+.gm-badge-outline {{
+    display: inline-block;
+    background: #FFFFFF;
+    color: {COLOR_TEXT};
+    border: 1px solid {COLOR_BORDER};
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 999px;
+    margin: 0 4px 4px 0;
+}}
+.gm-meta-row {{
+    color: {COLOR_MUTED};
+    font-size: 0.82rem;
+    margin: 2px 0 10px 0;
+}}
+.gm-field-label {{
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: {COLOR_MUTED};
+    margin: 10px 0 4px 0;
+}}
+.gm-hero-img {{
+    width: 100%;
+    max-height: 340px;
+    object-fit: cover;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}}
+.gm-placeholder-img {{
+    width: 100%;
+    height: 140px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    background: linear-gradient(120deg, {COLOR_PRIMARY_DARK}, {COLOR_PRIMARY});
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.85);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
 }}
 
+/* -------- tabs -------- */
 [data-testid="stTabs"] button [data-testid="stMarkdownContainer"] p {{
     font-weight: 600;
-    font-size: 0.92rem;
+    font-size: 0.86rem;
 }}
+button[data-baseweb="tab"] {{ padding: 6px 12px !important; }}
 
-.stButton > button, .stDownloadButton > button {{
+/* -------- buttons -------- */
+.stButton > button, .stDownloadButton > button, .stLinkButton > a {{
     border-radius: 8px;
     font-weight: 600;
+    font-size: 0.84rem;
     border: 1px solid {COLOR_BORDER};
 }}
+
+/* -------- dataframe -------- */
+[data-testid="stDataFrame"] {{ border: 1px solid {COLOR_BORDER}; border-radius: 8px; overflow: hidden; }}
+
+/* -------- expander -------- */
+[data-testid="stExpander"] summary {{ font-size: 0.86rem; font-weight: 600; }}
+
+/* -------- captions -------- */
+[data-testid="stCaptionContainer"] {{ font-size: 0.76rem; }}
 </style>
 """
 
@@ -150,24 +237,71 @@ def section_label(text: str):
     st.markdown(f'<div class="gm-section-label">{text}</div>', unsafe_allow_html=True)
 
 
-def style_fig(fig, height=None, legend_title=None, title=None, showlegend=None):
-    """Aplica tipografía, título y fondo consistentes a una figura Plotly."""
+# ------------------------------------------------------------ tipografía proporcional
+def _scale(height: int) -> dict:
+    """Tamaños de fuente proporcionales a la altura real del gráfico."""
+    h = max(height, 200)
+    title = min(18, max(13, round(11 + h / 90)))
+    axis = min(13, max(10, round(9 + h / 220)))
+    legend = min(12, max(9, round(9 + h / 260)))
+    tick = max(9, axis - 1)
+    return {"title": title, "axis": axis, "legend": legend, "tick": tick}
+
+
+def style_fig(fig, height=380, legend_title=None, title=None, showlegend=None, compact_margins=False):
+    """Aplica tipografía proporcional, título y fondo consistentes a una figura Plotly."""
+    s = _scale(height)
+    top_margin = 46 if title else 18
+    margins = dict(l=8, r=8, t=top_margin, b=8) if compact_margins else dict(l=10, r=10, t=top_margin, b=10)
+
     layout_kwargs = dict(
-        font=PLOTLY_FONT,
+        height=height,
+        font=dict(family=FONT_FAMILY, color=COLOR_TEXT, size=s["axis"]),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=10, r=10, t=54 if title else 30, b=10),
+        margin=margins,
         colorway=CATEGORY_PALETTE,
+        legend=dict(font=dict(size=s["legend"]), title=dict(font=dict(size=s["legend"] + 1))),
+        hoverlabel=dict(font=dict(family=FONT_FAMILY, size=s["axis"])),
     )
-    if height:
-        layout_kwargs["height"] = height
     if legend_title is not None:
         layout_kwargs["legend_title_text"] = legend_title
     if title is not None:
         layout_kwargs["title"] = dict(
-            text=title, font=dict(family=FONT_FAMILY, size=17, color=COLOR_TEXT, weight=700), x=0.0, xanchor="left",
+            text=title, font=dict(family=FONT_FAMILY, size=s["title"], color=COLOR_TEXT, weight=700),
+            x=0.0, xanchor="left", y=0.97, yanchor="top",
         )
     if showlegend is not None:
         layout_kwargs["showlegend"] = showlegend
     fig.update_layout(**layout_kwargs)
+    fig.update_xaxes(tickfont=dict(size=s["tick"]), title_font=dict(size=s["axis"]))
+    fig.update_yaxes(tickfont=dict(size=s["tick"]), title_font=dict(size=s["axis"]))
     return fig
+
+
+# ------------------------------------------------------------ componentes reutilizables
+def kpi_row(items: list[tuple[str, str, str]], per_row: int = 4):
+    """items: lista de (label, value, delta_opcional). Distribuye en filas de `per_row` columnas."""
+    for i in range(0, len(items), per_row):
+        chunk = items[i:i + per_row]
+        cols = st.columns(per_row)
+        for col, item in zip(cols, chunk):
+            label, value = item[0], item[1]
+            delta = item[2] if len(item) > 2 else None
+            col.metric(label, value, delta)
+
+
+def dataframe_full(df, column_config=None, height=None, hide_index=True):
+    """Wrapper estándar para tablas a ancho completo, con altura razonable."""
+    n_rows = min(len(df), 12)
+    calc_height = height or max(160, 38 + n_rows * 35)
+    st.dataframe(
+        df, width="stretch", hide_index=hide_index,
+        column_config=column_config or {}, height=calc_height,
+    )
+
+
+def badge_list(values, outline=False):
+    cls = "gm-badge-outline" if outline else "gm-badge"
+    spans = "".join(f'<span class="{cls}">{v}</span>' for v in values if v)
+    st.markdown(f'<div>{spans}</div>', unsafe_allow_html=True)

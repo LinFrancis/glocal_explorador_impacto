@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import plotly.express as px
 import streamlit as st
 
+from utils.components import render_news_card
 from utils.data import load_noticias
 from utils.style import inject, page_header, section_label, style_fig
 
@@ -21,10 +22,17 @@ page_header(
 df = load_noticias()
 con_fecha = df[df["tiene_fecha"]].copy()
 
+
+@st.dialog("Ficha de la experiencia", width="large")
+def _show_dialog(item_id: int):
+    row = df[df["item"] == item_id].iloc[0]
+    render_news_card(row)
+
+
 DIM_OPTIONS = {
-    "Categoría macro": "categoria_macro",
-    "Eje GCAA": "eje_gcaa",
-    "Atributo de resiliencia": "atributos_resiliencia",
+    "Categoría macro": "categoria_macro_primary",
+    "Eje GCAA": "eje_gcaa_primary",
+    "Atributo de resiliencia": "atributos_resiliencia_primary",
 }
 
 c1, c2 = st.columns(2)
@@ -36,29 +44,18 @@ with c2:
 dim_col = DIM_OPTIONS[dim_label]
 color_col = DIM_OPTIONS[color_label]
 
-
-def _primary(v):
-    if not isinstance(v, str) or not v.strip():
-        return "Sin dato"
-    return v.split(";")[0].strip()
-
-
-plot_df = con_fecha.copy()
-plot_df["carril"] = plot_df[dim_col].apply(_primary)
-plot_df["color_dim"] = plot_df[color_col].apply(_primary)
-
 section_label("Cronología")
 fig = px.scatter(
-    plot_df, x="fecha_parsed", y="carril", color="color_dim",
+    con_fecha, x="fecha_parsed", y=dim_col, color=color_col,
     hover_name="titulo",
-    hover_data={"fecha_parsed": "|%d %b %Y", "carril": False, "color_dim": True},
-    labels={"fecha_parsed": "Fecha", "carril": dim_label, "color_dim": color_label},
+    hover_data={"fecha_parsed": "|%d %b %Y", dim_col: False, color_col: True},
+    labels={"fecha_parsed": "Fecha", dim_col: dim_label, color_col: color_label},
 )
-fig.update_traces(marker=dict(size=10, line=dict(width=1, color="#FFFFFF")))
+fig.update_traces(marker=dict(size=9, line=dict(width=1, color="#FFFFFF")))
 fig.update_yaxes(categoryorder="total ascending", title=None)
 fig.update_xaxes(title="Fecha")
-style_fig(fig, height=560, legend_title=color_label, title=f"Cronología de experiencias, agrupadas por {dim_label.lower()}")
-st.plotly_chart(fig, use_container_width=True)
+style_fig(fig, height=460, legend_title=color_label, title=f"Cronología de experiencias, agrupadas por {dim_label.lower()}")
+st.plotly_chart(fig, width="stretch")
 
 st.divider()
 
@@ -70,13 +67,15 @@ st.markdown(f"**{len(year_items)} experiencias en {year_sel}**")
 
 for _, row in year_items.iterrows():
     with st.container(border=True):
-        cA, cB = st.columns([1, 5])
+        cA, cB, cC = st.columns([1, 4, 1])
         with cA:
             st.markdown(f"**{row['fecha_parsed'].strftime('%d %b %Y')}**")
         with cB:
             st.markdown(f"**{row['titulo']}**")
-            eje = row["eje_gcaa"] if row["eje_gcaa"].strip().lower() != "no aplica" else None
-            tags = [row["categoria_macro"].split(";")[0].strip()]
-            if eje:
-                tags.append(eje.split(";")[0].strip())
+            tags = [row["categoria_macro_primary"]]
+            if row["eje_gcaa_primary"].lower() != "no aplica":
+                tags.append(row["eje_gcaa_primary"])
             st.caption(" · ".join(tags))
+        with cC:
+            if st.button("Ver ficha", key=f"ficha_{row['item']}", width="stretch"):
+                _show_dialog(int(row["item"]))
