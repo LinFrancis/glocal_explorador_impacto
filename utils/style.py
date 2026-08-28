@@ -35,6 +35,16 @@ def _build_color_map(categories):
     return m
 
 
+def build_color_map(categories):
+    """Mapa {categoría: color fijo} determinista a partir de un orden de categorías.
+
+    Para dimensiones que no tienen un mapa de color predefinido en DIMENSION_COLOR_MAPS.
+    Al derivar el color del ORDEN (no del subconjunto presente en la vista), un mismo
+    valor conserva su color en las tres vistas del mapa (coordenadas, ciudad y país).
+    """
+    return _build_color_map(list(categories))
+
+
 COLOR_MAP_MACRO = _build_color_map(MACRO_CATEGORY_ORDER)
 COLOR_MAP_GCAA = _build_color_map(GCAA_EJE_ORDER)
 COLOR_MAP_RESILIENCIA = _build_color_map(list(RESILIENCE_TAXONOMY.keys()))
@@ -303,6 +313,39 @@ def style_fig(fig, height=380, legend_title=None, title=None, showlegend=None, c
     fig.update_layout(**layout_kwargs)
     fig.update_xaxes(tickfont=dict(size=s["tick"]), title_font=dict(size=s["axis"]))
     fig.update_yaxes(tickfont=dict(size=s["tick"]), title_font=dict(size=s["axis"]))
+    return fig
+
+
+def ensure_map_legend(fig, order, color_map=None):
+    """Fuerza que la leyenda de un mapa liste SIEMPRE todas las categorías de `order`.
+
+    En las vistas agregadas (ciudad, país) cada punto se pinta con la categoría
+    *dominante* de ese grupo, así que Plotly solo dibuja en la leyenda las categorías
+    que llegan a ser dominantes en algún grupo — por eso la leyenda se encogía al pasar
+    a "País". Esta función añade una traza vacía (sin puntos visibles) por cada categoría
+    que falte, con su color fijo, y reordena las trazas para respetar `order`. El
+    resultado: la misma lista de categorías, en el mismo orden y color, en las tres vistas.
+    """
+    import plotly.graph_objects as go
+
+    present = {t.name for t in fig.data if getattr(t, "name", None)}
+    for cat in order:
+        if cat in present:
+            continue
+        marker = dict(size=10)
+        if color_map and cat in color_map:
+            marker["color"] = color_map[cat]
+        fig.add_trace(
+            go.Scattermap(
+                lat=[None], lon=[None], mode="markers", marker=marker,
+                name=cat, showlegend=True, hoverinfo="skip",
+            )
+        )
+
+    rank = {cat: i for i, cat in enumerate(order)}
+    fig.data = tuple(
+        sorted(fig.data, key=lambda t: rank.get(getattr(t, "name", None), len(rank)))
+    )
     return fig
 
 

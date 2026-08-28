@@ -253,6 +253,69 @@ DIMENSION_REGISTRY = {
 }
 
 
+LONG_TAIL_LABEL = "Otros"
+
+
+def cap_categories(values: pd.Series, order: list[str], max_slices: int = 24):
+    """Colapsa la cola larga de una dimensión en 'Otros' para que la leyenda del mapa siga
+    siendo legible cuando hay decenas de valores (p. ej. actores institucionales, con >150).
+
+    Devuelve ``(serie_recodificada, orden_recortado)``. Si hay `max_slices` categorías reales
+    o menos, no cambia nada. Las etiquetas tipo 'No aplica' / 'Sin dato' se conservan siempre
+    y quedan al final.
+    """
+    na = [c for c in order if str(c).strip().lower() in NA_LABELS]
+    real = [c for c in order if c not in na]
+    if len(real) <= max_slices:
+        return values, order
+    keep = set(real[: max_slices - 1]) | set(na)
+    new_values = values.where(values.isin(keep), LONG_TAIL_LABEL)
+    new_order = real[: max_slices - 1] + [LONG_TAIL_LABEL] + na
+    return new_values, new_order
+
+
+def map_color_options() -> dict[str, str]:
+    """Etiqueta visible -> columna ``<col>_primary`` para el selector 'Colorear por' del mapa.
+
+    Cubre TODAS las dimensiones clasificables del catálogo (DIMENSION_REGISTRY), para que
+    el mapa ofrezca exactamente las mismas opciones de clasificación que el resto de la
+    plataforma y no una lista recortada.
+    """
+    return {meta["label"]: f"{col}_primary" for col, meta in DIMENSION_REGISTRY.items()}
+
+
+def attach_map_dimensions(mapa: pd.DataFrame, noticias: pd.DataFrame) -> pd.DataFrame:
+    """Añade a `mapa` una columna ``<col>_primary`` por cada dimensión de DIMENSION_REGISTRY.
+
+    Cada columna lleva UN valor canónico por experiencia: el primer valor de la celda
+    multi-etiqueta (:func:`primary_label`), 'Sí'/'No' para el enfoque de género, y el país
+    tal cual. Es la fuente única para colorear o agrupar el mapa por cualquier
+    clasificación de la base, sin que cada vista invente su propia lógica.
+    """
+    out = mapa.copy()
+    raw_needed = [
+        c for c in DIMENSION_REGISTRY
+        if c != "pais" and c in noticias.columns and c not in out.columns
+    ]
+    if raw_needed:
+        out = out.merge(noticias[["item", *raw_needed]], on="item", how="left")
+
+    for col in DIMENSION_REGISTRY:
+        pcol = f"{col}_primary"
+        if pcol in out.columns:  # ya calculada de forma centralizada (p. ej. categoria_macro_primary)
+            continue
+        if col == "pais":
+            out[pcol] = out["pais"] if "pais" in out.columns else "Sin dato"
+        elif col == "enfoque_genero":
+            src = out["enfoque_genero"] if "enfoque_genero" in out.columns else None
+            out[pcol] = src.apply(genero_label) if src is not None else "No"
+        elif col in out.columns:
+            out[pcol] = out[col].fillna("").apply(primary_label)
+        else:
+            out[pcol] = "Sin dato"
+    return out
+
+
 def _normalize_label(label):
     label = label.strip()
     return _METODOLOGIA_ALIASES.get(label.lower(), label)
