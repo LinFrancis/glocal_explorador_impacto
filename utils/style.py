@@ -19,6 +19,33 @@ CATEGORY_PALETTE = [
     "#B01E4B", "#3F7D20", "#7A5B1E", "#2B2D42",
     "#0E7C7B", "#9A3B7D",
 ]
+COLOR_NA = "#B6BAC2"
+
+# ------------------------------------------------------------ mapas de color fijos por dimensión
+# Un mismo valor de categoría es SIEMPRE el mismo color en toda la plataforma
+# (mapa, línea de tiempo, gráficos, radial), sin importar el nivel de agregación.
+from utils.data import GCAA_EJE_ORDER, GENERO_ORDER, MACRO_CATEGORY_ORDER, RESILIENCE_TAXONOMY  # noqa: E402
+
+
+def _build_color_map(categories):
+    m = {c: CATEGORY_PALETTE[i % len(CATEGORY_PALETTE)] for i, c in enumerate(categories)}
+    m["No aplica"] = COLOR_NA
+    m["Sin dato"] = COLOR_NA
+    m["No especificado"] = COLOR_NA
+    return m
+
+
+COLOR_MAP_MACRO = _build_color_map(MACRO_CATEGORY_ORDER)
+COLOR_MAP_GCAA = _build_color_map(GCAA_EJE_ORDER)
+COLOR_MAP_RESILIENCIA = _build_color_map(list(RESILIENCE_TAXONOMY.keys()))
+COLOR_MAP_GENERO = {"Sí": "#B01E4B", "No": "#B6BAC2"}
+
+DIMENSION_COLOR_MAPS = {
+    "categoria_macro_primary": COLOR_MAP_MACRO,
+    "eje_gcaa_primary": COLOR_MAP_GCAA,
+    "atributos_resiliencia_primary": COLOR_MAP_RESILIENCIA,
+    "enfoque_genero_primary": COLOR_MAP_GENERO,
+}
 
 # ------------------------------------------------------------------ CSS global
 _CSS = f"""

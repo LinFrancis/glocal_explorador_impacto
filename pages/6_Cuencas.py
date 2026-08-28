@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import plotly.express as px
 import streamlit as st
 
+from utils.components import render_news_card
 from utils.data import load_cuencas, load_mapa_ubicaciones, load_noticias, load_subcuencas
 from utils.style import inject, page_header, section_label, style_fig
 
@@ -23,14 +24,21 @@ cuencas = load_cuencas()
 subcuencas = load_subcuencas()
 df = load_noticias()
 
+
+@st.dialog("Ficha de la experiencia", width="large")
+def _show_dialog(item_id: int):
+    row = df[df["item"] == item_id].iloc[0]
+    render_news_card(row)
+
+
 c1, c2, c3 = st.columns(3)
 c1.metric("Cuencas de Chile en la base", len(cuencas))
 c2.metric("Subcuencas", len(subcuencas))
-c3.metric("Experiencias vinculadas a una cuenca", int(mapa["COD_CUENCA"].notna().sum()))
+c3.metric("Experiencias vinculadas a una cuenca", int(mapa["NOM_CUENCA"].notna().sum()))
 
-vinculadas = mapa[mapa["COD_CUENCA"].notna()].copy()
+vinculadas = mapa[mapa["NOM_CUENCA"].notna()].copy()
 ranking = (
-    vinculadas.groupby(["COD_CUENCA", "NOM_CUENCA"])
+    vinculadas.groupby("NOM_CUENCA")
     .agg(n=("item", "count"), lat=("lat", "mean"), lon=("lon", "mean"))
     .reset_index()
     .sort_values("n", ascending=False)
@@ -65,20 +73,33 @@ cuenca_sel = st.selectbox(
     "Elegir cuenca", ranking["NOM_CUENCA"].tolist(),
     format_func=lambda n: f"{n} ({int(ranking.loc[ranking['NOM_CUENCA']==n,'n'].iloc[0])} experiencias)",
 )
-cod_sel = ranking.loc[ranking["NOM_CUENCA"] == cuenca_sel, "COD_CUENCA"].iloc[0]
 
 col_a, col_b = st.columns([3, 2])
 with col_a:
-    st.markdown(f"**Experiencias en la cuenca {cuenca_sel}**")
-    items_cuenca = vinculadas[vinculadas["COD_CUENCA"] == cod_sel][["item", "titulo", "lugar_texto"]].drop_duplicates()
-    st.dataframe(items_cuenca, hide_index=True, width="stretch", height=240)
+    st.markdown(f"**Experiencias en la cuenca {cuenca_sel}** — haz clic en una fila para ver la ficha")
+    items_cuenca = (
+        vinculadas[vinculadas["NOM_CUENCA"] == cuenca_sel][["item", "titulo", "lugar_texto"]]
+        .drop_duplicates(subset="item")
+        .reset_index(drop=True)
+    )
+    event = st.dataframe(
+        items_cuenca, hide_index=True, width="stretch", height=240,
+        on_select="rerun", selection_mode="single-row",
+    )
+    selected = event.selection.rows if event and event.selection else []
+    if selected:
+        _show_dialog(int(items_cuenca.iloc[selected[0]]["item"]))
+
 with col_b:
     st.markdown(f"**Subcuencas de {cuenca_sel}** (jerarquía BNA, informativo)")
-    subc = subcuencas[subcuencas["COD_CUEN"] == cod_sel][["COD_SUBC", "NOM_SUBC", "num_subsubcuencas"]]
-    st.dataframe(subc, hide_index=True, width="stretch", height=240)
+    cod_match = cuencas.loc[cuencas["NOM_CUEN"] == cuenca_sel, "COD_CUEN"]
+    if len(cod_match):
+        subc = subcuencas[subcuencas["COD_CUEN"] == cod_match.iloc[0]][["COD_SUBC", "NOM_SUBC", "num_subsubcuencas"]]
+        st.dataframe(subc, hide_index=True, width="stretch", height=240)
+    else:
+        st.caption("Sin coincidencia en la tabla de referencia de cuencas.")
 
 st.caption(
     "La vinculación experiencia → cuenca se hizo por unión espacial automática (punto dentro de polígono). "
-    "El detalle de subcuenca/subsubcuenca es la jerarquía completa de esa cuenca, no una asignación "
-    "experiencia-a-subcuenca."
+    "El detalle de subcuenca es la jerarquía completa de esa cuenca, no una asignación experiencia-a-subcuenca."
 )

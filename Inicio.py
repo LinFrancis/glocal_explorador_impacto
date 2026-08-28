@@ -57,7 +57,7 @@ c9.metric("Países alcanzados", f"{n_paises}")
 c10.metric("Con fecha registrada", f"{n_con_fecha}", f"de {total} totales")
 rango = f"{int(df['anio'].min())}–{int(df['anio'].max())}" if n_con_fecha else "s/d"
 c11.metric("Rango temporal", rango)
-c12.metric("Cuencas vinculadas", f"{mapa['COD_CUENCA'].nunique() if 'COD_CUENCA' in mapa.columns else '—'}")
+c12.metric("Cuencas vinculadas", f"{mapa['NOM_CUENCA'].nunique() if 'NOM_CUENCA' in mapa.columns else '—'}")
 
 left, right = st.columns([3, 2])
 
@@ -83,7 +83,7 @@ Usa el menú de la izquierda para explorar en detalle.
     nav1, nav2, nav3 = st.columns(3)
     nav1.page_link("pages/2_Explorador.py", label="Explorador Avanzado")
     nav2.page_link("pages/3_Mapa.py", label="Mapa")
-    nav3.page_link("pages/7_Linea_de_Tiempo.py", label="Línea de Tiempo")
+    nav3.page_link("pages/4_Evolucion_Temporal.py", label="Evolución en el Tiempo")
     nav4, nav5, nav6 = st.columns(3)
     nav4.page_link("pages/1_Marco_Teorico.py", label="Marco Teórico y Fuentes")
     nav5.page_link("pages/8_Glosario.py", label="Glosario")

@@ -6,7 +6,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 
-from utils.data import get_options, load_noticias
+from utils.data import (
+    GCAA_EJE_ORDER,
+    RESILIENCE_ATTR_DEFS,
+    RESILIENCE_SUBATTR_DEFS,
+    RESILIENCE_TAXONOMY,
+    get_options,
+    load_noticias,
+)
 from utils.style import inject, page_header, section_label
 
 st.set_page_config(page_title="Glosario", layout="wide")
@@ -122,6 +129,52 @@ busqueda = st.text_input("Buscar en el glosario", placeholder="Ej: resiliencia, 
 q = busqueda.strip().lower()
 total_mostrados = 0
 
+# ---------------------------------------------------------------- atributos y sub-atributos CR2 (jerárquico)
+resil_matches = 0
+resil_blocks = []
+for atributo, subs in RESILIENCE_TAXONOMY.items():
+    attr_def = RESILIENCE_ATTR_DEFS.get(atributo, "")
+    sub_defs = [(s, RESILIENCE_SUBATTR_DEFS.get(s, "")) for s in subs]
+    if q:
+        attr_hit = q in atributo.lower() or q in attr_def.lower()
+        sub_defs_f = [(s, d) for s, d in sub_defs if q in s.lower() or q in d.lower()]
+        if not attr_hit and not sub_defs_f:
+            continue
+        if not attr_hit:
+            sub_defs = sub_defs_f
+    resil_blocks.append((atributo, attr_def, sub_defs))
+    resil_matches += 1 + len(sub_defs)
+
+if resil_blocks:
+    total_mostrados += resil_matches
+    section_label(f"Atributos y sub-atributos de resiliencia — CR2 ({len(resil_blocks)})")
+    st.caption(
+        "Fuente: Race to Resilience Technical Secretariat (2023), \"Introduction to Resilience "
+        "Attributes, Their Subcategories, and Their Role in the Race to Resilience Campaign\", CR2."
+    )
+    for atributo, attr_def, sub_defs in resil_blocks:
+        with st.container(border=True):
+            st.markdown(f"**{atributo}**")
+            st.caption(attr_def)
+            for sub, sub_def in sub_defs:
+                st.markdown(f"—&nbsp;&nbsp;**{sub}**")
+                st.caption(f"　{sub_def}")
+
+    st.divider()
+
+# ---------------------------------------------------------------- ejes GCAA
+gcaa_entradas = [(e, "") for e in GCAA_EJE_ORDER if e.lower() != "no aplica"]
+if q:
+    gcaa_entradas = [e for e in gcaa_entradas if q in e[0].lower()]
+if gcaa_entradas:
+    total_mostrados += len(gcaa_entradas)
+    section_label(f"Ejes GCAA — Global Climate Action Agenda, UNFCCC ({len(gcaa_entradas)})")
+    st.caption("Fuente: UNFCCC NAZCA Portal / Global Climate Action Agenda 2026-2030. Ver también Objetivo GCAA en el Explorador para el detalle numerado dentro de cada eje.")
+    for eje, _ in gcaa_entradas:
+        with st.container(border=True):
+            st.markdown(f"**{eje}**")
+    st.divider()
+
 for titulo_seccion, definiciones, data_col in SECCIONES:
     entradas = list(definiciones.items())
     if data_col:
@@ -149,4 +202,7 @@ if q and total_mostrados == 0:
     st.info("No se encontraron términos que coincidan con la búsqueda.")
 
 st.divider()
-st.markdown("**Ejes y objetivos GCAA, atributos y sub-atributos de resiliencia:** el detalle completo con sus fuentes está en la página Marco Teórico y Fuentes.")
+st.markdown(
+    "**Descripción técnica de cada columna** (tipo de variable, opciones de respuesta, fuente): "
+    "hoja **Libro_de_Codigos** del archivo Excel del catálogo."
+)

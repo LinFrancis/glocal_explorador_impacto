@@ -31,6 +31,7 @@ def _show_dialog(item_id: int):
 
 with st.sidebar:
     st.markdown("**Filtros**")
+    st.page_link("pages/8_Glosario.py", label="¿Qué significa cada categoría? → Glosario")
 
     texto = st.text_input("Buscar texto en título o contenido")
 
