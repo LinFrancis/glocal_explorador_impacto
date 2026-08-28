@@ -109,37 +109,51 @@ with c2:
     )
 
 cols_mostrar = [
-    "item", "titulo", "categoria_macro_primary", "metodologia",
-    "eje_gcaa_primary", "atributos_resiliencia_primary",
-    "enfoque_genero", "lugar", "anio",
+    "item", "titulo", "descripcion_catalogo", "url_noticia",
+    "categorias", "categoria_macro", "metodologia", "actores_normalizados",
+    "eje_gcaa", "objetivo_gcaa", "atributos_resiliencia", "subatributos_resiliencia",
+    "beneficiarios_directos", "beneficiarios_indirectos", "enfoque_genero",
+    "lugar", "anio",
 ]
 cols_mostrar = [c for c in cols_mostrar if c in result.columns]
 display_df = result[cols_mostrar].rename(columns={
-    "categoria_macro_primary": "categoria_macro",
-    "eje_gcaa_primary": "eje_gcaa",
-    "atributos_resiliencia_primary": "atributos_resiliencia",
+    "descripcion_catalogo": "resumen",
+    "url_noticia": "link",
+    "actores_normalizados": "actores",
 })
 
 event = st.dataframe(
     display_df,
     width="stretch",
     hide_index=True,
-    height=460,
+    height=560,
     on_select="rerun",
     selection_mode="single-row",
     column_config={
         "item": st.column_config.NumberColumn("N.", width="small"),
         "titulo": st.column_config.TextColumn("Título", width="medium"),
+        "resumen": st.column_config.TextColumn("Resumen", width="large"),
+        "link": st.column_config.LinkColumn("Link", display_text="Abrir ↗", width="small"),
+        "categorias": st.column_config.TextColumn("Categorías", width="medium"),
         "categoria_macro": st.column_config.TextColumn("Categoría macro", width="medium"),
         "metodologia": st.column_config.TextColumn("Metodología", width="medium"),
+        "actores": st.column_config.TextColumn("Actores", width="medium"),
         "eje_gcaa": st.column_config.TextColumn("Eje GCAA", width="medium"),
-        "atributos_resiliencia": st.column_config.TextColumn("Atributo resiliencia", width="medium"),
-        "enfoque_genero": st.column_config.TextColumn("Género", width="small"),
+        "objetivo_gcaa": st.column_config.TextColumn("Objetivo GCAA", width="medium"),
+        "atributos_resiliencia": st.column_config.TextColumn("Atributos resiliencia", width="medium"),
+        "subatributos_resiliencia": st.column_config.TextColumn("Sub-atributos resiliencia", width="medium"),
+        "beneficiarios_directos": st.column_config.TextColumn("Beneficiarios directos", width="medium"),
+        "beneficiarios_indirectos": st.column_config.TextColumn("Beneficiarios indirectos", width="medium"),
+        "enfoque_genero": st.column_config.TextColumn("Enfoque de género", width="small"),
         "lugar": st.column_config.TextColumn("Lugar", width="medium"),
         "anio": st.column_config.NumberColumn("Año", format="%d", width="small"),
     },
 )
-st.caption("Categoría, eje GCAA y atributo de resiliencia muestran la etiqueta principal cuando una experiencia tiene más de una.")
+st.caption(
+    "Todas las categorías se muestran completas (todas las etiquetas de cada experiencia, no solo la "
+    "principal). Usa el ícono de columnas de la tabla para mostrar/ocultar, y haz clic en una fila para "
+    "abrir la ficha completa con el contenido íntegro."
+)
 
 selected_rows = event.selection.rows if event and event.selection else []
 if selected_rows:

@@ -140,19 +140,40 @@ mapa_fecha = mapa[mapa["tiene_fecha"] == True].copy()
 mapa_fecha["anio"] = mapa_fecha["anio"].astype(int)
 # categoria_macro_primary ya viene calculada de forma centralizada en load_mapa_ubicaciones()
 
+mapa_fecha["marker_size"] = 1
+
+# Plotly Express solo crea una traza animada por categoría si esta aparece en el PRIMER
+# frame; si una categoría macro no tiene ningún punto geolocalizado en el año más antiguo,
+# desaparece de la animación completa (incluso en años posteriores donde sí hay datos).
+# Se agregan puntos "ancla" invisibles (tamaño 0) para las 7 categorías en cada frame, así
+# la traza de cada categoría existe desde el inicio y nunca se pierde durante la animación.
+lat_centro = mapa_fecha["lat"].mean()
+lon_centro = mapa_fecha["lon"].mean()
+anclas = pd.DataFrame({
+    "categoria_macro_primary": macro_order,
+    "lat": lat_centro,
+    "lon": lon_centro,
+    "titulo": "",
+    "lugar_texto": "",
+    "marker_size": 0,
+})
+
 frames = []
 for y in range(anio_min, anio_max + 1):
     sub = mapa_fecha[mapa_fecha["anio"] <= y].copy()
     sub["frame_anio"] = y
-    frames.append(sub)
+    anclas_y = anclas.copy()
+    anclas_y["frame_anio"] = y
+    frames.append(pd.concat([sub, anclas_y], ignore_index=True))
 cum_map_df = pd.concat(frames, ignore_index=True)
 
 fig_map = px.scatter_map(
     cum_map_df, lat="lat", lon="lon", color="categoria_macro_primary",
+    size="marker_size", size_max=9,
     category_orders={"categoria_macro_primary": macro_order},
     color_discrete_map=DIMENSION_COLOR_MAPS.get("categoria_macro_primary"),
     animation_frame="frame_anio", hover_name="titulo",
-    hover_data={"lugar_texto": True, "lat": False, "lon": False},
+    hover_data={"lugar_texto": True, "lat": False, "lon": False, "marker_size": False},
     labels={"categoria_macro_primary": "Categoría macro", "frame_anio": "Año"},
     zoom=1.4,
 )
