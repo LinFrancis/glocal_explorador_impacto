@@ -18,7 +18,8 @@ from utils.data import (
 )
 from utils.style import (
     DIMENSION_COLOR_MAPS,
-    MAP_CENTER_CHILE,
+    MAP_CENTER_WORLD,
+    MAP_ZOOM_WORLD,
     build_color_map,
     inject,
     page_header,
@@ -193,7 +194,7 @@ fig_map = px.scatter_map(
     animation_frame="frame_anio", hover_name="titulo",
     hover_data={"lugar_texto": True, "lat": False, "lon": False, "marker_size": False},
     labels={"categoria_macro_primary": "Categoría macro", "frame_anio": "Año"},
-    center=MAP_CENTER_CHILE, zoom=2.2,
+    center=MAP_CENTER_WORLD, zoom=MAP_ZOOM_WORLD,
 )
 fig_map.update_layout(map_style="open-street-map")
 style_fig(fig_map, height=560, title="Expansión geográfica acumulada, año a año", legend_title="Categoría macro")

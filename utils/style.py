@@ -10,7 +10,12 @@ FONT_FAMILY = "'Montserrat', -apple-system, 'Segoe UI', sans-serif"
 # Logo de marca (Glocalminds). Se muestra en el sidebar de todas las páginas vía inject().
 LOGO_PATH = Path(__file__).resolve().parent.parent / "images" / "logoGnaranja.png"
 
-# Ubicación inicial de TODOS los mapas: centrada en Chile (foco de la plataforma).
+# Ubicación inicial de los mapas de experiencias (Mapa, Evolución): vista de mundo completo,
+# para ver todos los países a la vez. El usuario puede acercar después.
+MAP_CENTER_WORLD = {"lat": 20, "lon": 0}
+MAP_ZOOM_WORLD = 1.0
+
+# Vista para mapas específicos de Chile (p. ej. Cuencas hidrográficas, que no tienen dato país).
 MAP_CENTER_CHILE = {"lat": -35.5, "lon": -71.3}
 MAP_ZOOM_CHILE = 3.2
 
