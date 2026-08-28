@@ -18,14 +18,17 @@ from utils.data import (
 )
 from utils.style import (
     DIMENSION_COLOR_MAPS,
-    MAP_CENTER_WORLD,
-    MAP_ZOOM_WORLD,
     build_color_map,
     inject,
     page_header,
     section_label,
     style_fig,
 )
+
+# Vista inicial del mapa: mundo completo (todos los países a la vez). Definido aquí, no en
+# utils.style, para no depender de que el servidor recargue ese módulo tras un deploy.
+WORLD_CENTER = {"lat": 20, "lon": 0}
+WORLD_ZOOM = 1.0
 
 st.set_page_config(page_title="Evolución Temporal", layout="wide")
 inject()
@@ -194,7 +197,7 @@ fig_map = px.scatter_map(
     animation_frame="frame_anio", hover_name="titulo",
     hover_data={"lugar_texto": True, "lat": False, "lon": False, "marker_size": False},
     labels={"categoria_macro_primary": "Categoría macro", "frame_anio": "Año"},
-    center=MAP_CENTER_WORLD, zoom=MAP_ZOOM_WORLD,
+    center=WORLD_CENTER, zoom=WORLD_ZOOM,
 )
 fig_map.update_layout(map_style="open-street-map")
 style_fig(fig_map, height=560, title="Expansión geográfica acumulada, año a año", legend_title="Categoría macro")
