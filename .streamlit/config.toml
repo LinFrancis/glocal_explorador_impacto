@@ -1,0 +1,41 @@
+[theme]
+base = "light"
+primaryColor = "#0B6E4F"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F4F5F7"
+textColor = "#111827"
+font = "Montserrat, sans-serif"
+baseFontSize = 15
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "https://fonts.gstatic.com/s/montserrat/v31/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCtr6Ew-.ttf"
+weight = "400"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "https://fonts.gstatic.com/s/montserrat/v31/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCtZ6Ew-.ttf"
+weight = "500"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "https://fonts.gstatic.com/s/montserrat/v31/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCu170w-.ttf"
+weight = "600"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "https://fonts.gstatic.com/s/montserrat/v31/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCuM70w-.ttf"
+weight = "700"
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Montserrat"
+url = "https://fonts.gstatic.com/s/montserrat/v31/JTUHjIg1_i6t8kCHKm4532VJOt5-QNFgpCvr70w-.ttf"
+weight = "800"
+style = "normal"
+
+[server]
+headless = true
