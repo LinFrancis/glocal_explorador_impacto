@@ -183,13 +183,15 @@ def render(df):
         macro = str(row.get("categoria_macro_primary") or row.get("categoria_macro") or "").split(";")[0].strip() or "Sin categoría"
         fecha_txt = row["fecha_parsed"].strftime("%Y") if row.get("tiene_fecha") else "Sin fecha"
         lugar_txt = str(row.get("lugar") or "").split(";")[0].strip() or "Sin lugar"
+        tipo_info = str(row.get("tipo_informacion") or "").strip()
         resumen = str(row.get("descripcion_catalogo") or row.get("preview_contenido") or "").strip()
         resumen_corto = (resumen[:160] + "…") if len(resumen) > 160 else resumen
 
         c1, c2 = st.columns([5, 1])
         with c1:
             st.markdown(f"**{row['titulo']}**")
-            st.caption(f"{fecha_txt} · {lugar_txt} · {macro}")
+            meta_bits = [fecha_txt, lugar_txt, macro] + ([tipo_info] if tipo_info else [])
+            st.caption(" · ".join(meta_bits))
             if resumen_corto:
                 st.caption(resumen_corto)
         with c2:

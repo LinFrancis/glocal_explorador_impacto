@@ -8,8 +8,9 @@ Streamlit comparte st.session_state entre todas las páginas de una misma sesió
 así que los criterios elegidos en el Explorador persisten al navegar a cualquier otra página.
 """
 import streamlit as st
+from rapidfuzz import fuzz
 
-from utils.data import filter_by_multilabel, get_options, load_noticias
+from utils.data import filter_by_multilabel, get_options, load_noticias, search_tokens
 from utils.style import logo_fundacion_html, logo_glocalminds_html
 
 CRITERIOS_KEY = "criterios_busqueda"
@@ -28,6 +29,13 @@ def render_search_filters(df) -> dict:
     st.page_link("pages/8_Glosario.py", label="¿Qué significa cada categoría? → Glosario")
 
     texto = st.text_input("Buscar texto en título o contenido")
+    f_fuzzy = st.slider(
+        "Nivel de coincidencia del buscador", min_value=50, max_value=100, value=100, step=5,
+        format="%d%%", key="filtro_fuzzy_umbral",
+        help="100% = coincidencia exacta/literal. Bajar el porcentaje encuentra resultados "
+             "aunque falte una tilde, haya un error de tipeo o solo una parte de la palabra "
+             "coincida (p. ej. 'plan' con umbral bajo encuentra 'planificación').",
+    )
 
     f_fuente = st.multiselect("Fuente", get_options(df, "fuente")) if "fuente" in df.columns else []
     f_tipo_info = st.multiselect("Tipo de información", get_options(df, "tipo_informacion")) if "tipo_informacion" in df.columns else []
@@ -75,6 +83,7 @@ def render_search_filters(df) -> dict:
 
     criterios = {
         "texto": texto,
+        "fuzzy_umbral": f_fuzzy,
         "fuente": f_fuente,
         "tipo_informacion": f_tipo_info,
         "personalidad_juridica": f_personalidad,
@@ -130,6 +139,35 @@ def entidad_titulo_sufijo(criterios: dict) -> str:
     return " — " + " + ".join(seleccion)
 
 
+def _score_palabra(query_tok: str, palabra: str) -> float:
+    """Similitud entre una palabra buscada y una palabra del catálogo (ambas ya sin tildes y en
+    minúscula). Exacta -> 100. Una es prefijo de la otra (p. ej. 'plan' de 'planificación') ->
+    96, para que aparezca al bajar apenas el umbral desde 100 sin inundar la búsqueda estricta
+    de falsos positivos cortos (fuzz.partial_ratio a secas hace justamente eso con palabras
+    de 4-5 letras). El resto de los casos (tildes distintas, errores de tipeo, género/plural)
+    se resuelve con la razón de Levenshtein completa."""
+    if query_tok == palabra:
+        return 100
+    if len(query_tok) >= 3 and (palabra.startswith(query_tok) or query_tok.startswith(palabra)):
+        return 96
+    return fuzz.ratio(query_tok, palabra)
+
+
+def _coincide_difuso(palabras: list[str], query_tokens: list[str], umbral: int) -> bool:
+    """True si CADA palabra de la búsqueda encuentra, entre las palabras de la fila, alguna lo
+    bastante parecida (umbral 100 = literal/exacta; más bajo tolera tildes, errores de tipeo o
+    coincidencia parcial, p. ej. 'plan' ~ 'planificación')."""
+    if not query_tokens:
+        return True
+    if not palabras:
+        return False
+    for qt in query_tokens:
+        mejor = max((_score_palabra(qt, palabra) for palabra in palabras), default=0)
+        if mejor < umbral:
+            return False
+    return True
+
+
 def apply_search_filters(df, criterios: dict):
     """Aplica los criterios guardados por el Explorador sobre cualquier dataframe derivado
     de load_noticias() (mismas columnas base: categoria_macro, categorias, fuente, etc.)."""
@@ -140,12 +178,19 @@ def apply_search_filters(df, criterios: dict):
     result = df
 
     texto = criterios.get("texto")
-    if texto:
-        t = texto.lower()
-        result = result[
-            result["titulo"].astype(str).str.lower().str.contains(t, na=False)
-            | result["contenido_completo"].astype(str).str.lower().str.contains(t, na=False)
-        ]
+    if texto and texto.strip():
+        query_tokens = search_tokens(texto)
+        umbral = criterios.get("fuzzy_umbral", 100)
+        if query_tokens and "_palabras_busqueda" in result.columns:
+            result = result[result["_palabras_busqueda"].apply(
+                lambda palabras: _coincide_difuso(palabras, query_tokens, umbral)
+            )]
+        elif query_tokens:
+            t = texto.lower()
+            result = result[
+                result["titulo"].astype(str).str.lower().str.contains(t, na=False)
+                | result["contenido_completo"].astype(str).str.lower().str.contains(t, na=False)
+            ]
 
     if criterios.get("fuente") and "fuente" in result.columns:
         result = result[result["fuente"].isin(criterios["fuente"])]

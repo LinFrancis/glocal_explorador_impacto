@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Capa de datos: carga, cacheo y transformación del catálogo Glocalminds."""
 import re
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -348,6 +349,20 @@ def _fix_missing_spaces(text):
     return text
 
 
+def strip_accents(text: str) -> str:
+    """Quita tildes/diacríticos (á->a, ñ->n queda igual porque la ñ no es un diacrítico
+    combinable en NFKD... en realidad sí se separa como n + ~, así que 'ñ' -> 'n'). Se usa
+    para que el buscador no distinga 'planificación' de 'planificacion'."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+
+
+def search_tokens(text: str) -> list[str]:
+    """Tokeniza texto libre para el buscador difuso: minúsculas, sin tildes, solo alfanumérico."""
+    if not isinstance(text, str) or not text.strip():
+        return []
+    return re.findall(r"[a-z0-9]+", strip_accents(text.lower()))
+
+
 def _normalize_label(label):
     label = label.strip()
     return _METODOLOGIA_ALIASES.get(label.lower(), label)
@@ -418,6 +433,12 @@ def load_noticias() -> pd.DataFrame:
     df["enlaces_externos_lista"] = df.get("enlaces_externos", pd.Series([None] * len(df))).apply(
         lambda v: [u.strip() for u in str(v).split("|") if u.strip()] if isinstance(v, str) and v.strip() else []
     )
+
+    # Palabras únicas normalizadas (sin tildes, en minúscula) de título + contenido completo,
+    # precalculadas una sola vez (esta función ya está cacheada) para que el buscador difuso
+    # del Explorador no tenga que re-tokenizar el catálogo completo en cada tecla.
+    texto_busqueda = df["titulo"].fillna("") + " " + df["contenido_completo"].fillna("")
+    df["_palabras_busqueda"] = texto_busqueda.apply(lambda t: sorted(set(search_tokens(t))))
 
     return df
 
