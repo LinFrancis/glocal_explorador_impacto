@@ -8,10 +8,24 @@ Streamlit comparte st.session_state entre todas las páginas de una misma sesió
 así que los criterios elegidos en el Explorador persisten al navegar a cualquier otra página.
 """
 import streamlit as st
-from rapidfuzz import fuzz
 
 from utils.data import filter_by_multilabel, get_options, load_noticias, search_tokens
 from utils.style import logo_fundacion_html, logo_glocalminds_html
+
+# rapidfuzz es la opción rápida (C++) para el buscador difuso; si el entorno de despliegue no
+# llegó a instalarla (p. ej. un rebuild de Streamlit Cloud que todavía no tomó el requirements.txt
+# nuevo), se cae a una implementación equivalente en difflib de la librería estándar — más lenta,
+# pero la app nunca debe romperse por esto.
+try:
+    from rapidfuzz import fuzz as _fuzz
+
+    def _ratio(a: str, b: str) -> float:
+        return _fuzz.ratio(a, b)
+except ImportError:
+    import difflib
+
+    def _ratio(a: str, b: str) -> float:
+        return difflib.SequenceMatcher(None, a, b).ratio() * 100
 
 CRITERIOS_KEY = "criterios_busqueda"
 
@@ -150,7 +164,7 @@ def _score_palabra(query_tok: str, palabra: str) -> float:
         return 100
     if len(query_tok) >= 3 and (palabra.startswith(query_tok) or query_tok.startswith(palabra)):
         return 96
-    return fuzz.ratio(query_tok, palabra)
+    return _ratio(query_tok, palabra)
 
 
 def _coincide_difuso(palabras: list[str], query_tokens: list[str], umbral: int) -> bool:

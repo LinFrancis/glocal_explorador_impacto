@@ -81,10 +81,7 @@ def render(df):
             col_cfg[c] = st.column_config.TextColumn(label, width="medium")
 
     with st.expander("Ver como planilla", expanded=False):
-        st.caption(
-            "Marca una o varias filas con las casillas de la izquierda para exportarlas en Word y "
-            "Excel para una postulación."
-        )
+        st.caption("Marca una o varias filas con las casillas de la izquierda para descargar solo esas en la sección de abajo.")
         event = st.dataframe(
             display_df, width="stretch", hide_index=True, height=560,
             on_select="rerun", selection_mode="multi-row", column_config=col_cfg,
@@ -93,58 +90,6 @@ def render(df):
         selected_rows = event.selection.rows if event and event.selection else []
         sel_df = df.iloc[selected_rows] if selected_rows else df.iloc[[]]
         sel_ids = tuple(int(i) for i in sel_df["item"].tolist())
-
-        st.divider()
-        section_label(f"Selección para exportar — {len(sel_ids)} experiencia(s)")
-
-        if not sel_ids:
-            st.info("Marca experiencias en la tabla para descargarlas.")
-        else:
-            contexto = st.text_input(
-                "¿Para qué es esta selección? (opcional, se incluye en el encabezado del Word)",
-                placeholder="Ej.: Postulación a fondo de apoyo a comunidades educativas — antecedentes de experiencias previas",
-                key="resultados_export_contexto",
-            )
-            d1, d2, d3 = st.columns(3)
-            d1.download_button(
-                "Word (.docx)", data=_word_bytes(df, sel_ids, contexto),
-                file_name="experiencias_seleccionadas.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                width="stretch", key="resultados_dl_word_sel",
-            )
-            d2.download_button(
-                "Excel (.xlsx)", data=_excel_bytes(df, sel_ids),
-                file_name="experiencias_seleccionadas.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                width="stretch", key="resultados_dl_excel_sel",
-            )
-            d3.download_button(
-                "CSV", data=sel_df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
-                file_name="experiencias_seleccionadas.csv", mime="text/csv",
-                width="stretch", key="resultados_dl_csv_sel",
-            )
-
-        st.divider()
-        st.download_button(
-            "CSV con los " + str(len(df)) + " resultados filtrados",
-            data=df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
-            file_name="experiencias_filtradas.csv", mime="text/csv", key="resultados_dl_csv_todos",
-        )
-        if len(df) and st.checkbox("Preparar Word y Excel con todos los resultados filtrados", key="resultados_check_todos"):
-            all_ids = tuple(int(i) for i in df["item"].tolist())
-            cc1, cc2 = st.columns(2)
-            cc1.download_button(
-                "Word (" + str(len(df)) + ")", data=_word_bytes(df, all_ids, ""),
-                file_name="experiencias_filtradas.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                width="stretch", key="resultados_dl_word_todos",
-            )
-            cc2.download_button(
-                "Excel (" + str(len(df)) + ")", data=_excel_bytes(df, all_ids),
-                file_name="experiencias_filtradas.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                width="stretch", key="resultados_dl_excel_todos",
-            )
 
     # -------------------------------------------------------- catálogo de lectura
     section_label("Catálogo de resultados — elige una para leerla completa")
@@ -199,3 +144,61 @@ def render(df):
                 st.session_state[ITEM_ACTIVO_KEY] = int(row["item"])
                 st.rerun()
         st.divider()
+
+    # -------------------------------------------------------- descargar evidencia de experiencia
+    section_label("Descargar evidencia de experiencia")
+    st.markdown(
+        "Para postulaciones a fondos o proyectos: descarga estos resultados como documento "
+        "formal de **evidencia de experiencia** — un Word con ficha completa por experiencia "
+        "(listo para adjuntar o pegar en un formulario) y un Excel con los mismos datos en "
+        "formato tabular (para anexos)."
+    )
+
+    contexto = st.text_input(
+        "¿Para qué postulación es esta evidencia? (opcional, se incluye en el encabezado del Word)",
+        placeholder="Ej.: Postulación a fondo de apoyo a comunidades educativas — antecedentes de experiencias previas",
+        key="resultados_export_contexto",
+    )
+
+    if sel_ids:
+        st.markdown(f"**Selección marcada en la planilla — {len(sel_ids)} experiencia(s)**")
+        d1, d2, d3 = st.columns(3)
+        d1.download_button(
+            "Word (.docx)", data=_word_bytes(df, sel_ids, contexto),
+            file_name="evidencia_experiencia_seleccion.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            width="stretch", key="resultados_dl_word_sel",
+        )
+        d2.download_button(
+            "Excel (.xlsx)", data=_excel_bytes(df, sel_ids),
+            file_name="evidencia_experiencia_seleccion.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width="stretch", key="resultados_dl_excel_sel",
+        )
+        d3.download_button(
+            "CSV", data=sel_df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+            file_name="evidencia_experiencia_seleccion.csv", mime="text/csv",
+            width="stretch", key="resultados_dl_csv_sel",
+        )
+        st.divider()
+
+    st.markdown(f"**Todos los resultados filtrados — {len(df)} experiencia(s)**")
+    all_ids = tuple(int(i) for i in df["item"].tolist())
+    e1, e2, e3 = st.columns(3)
+    e1.download_button(
+        "Word (.docx)", data=_word_bytes(df, all_ids, contexto),
+        file_name="evidencia_experiencia_filtrada.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        width="stretch", key="resultados_dl_word_todos",
+    )
+    e2.download_button(
+        "Excel (.xlsx)", data=_excel_bytes(df, all_ids),
+        file_name="evidencia_experiencia_filtrada.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch", key="resultados_dl_excel_todos",
+    )
+    e3.download_button(
+        "CSV", data=df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+        file_name="evidencia_experiencia_filtrada.csv", mime="text/csv",
+        width="stretch", key="resultados_dl_csv_todos",
+    )

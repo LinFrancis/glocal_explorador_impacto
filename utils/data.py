@@ -430,15 +430,18 @@ def load_noticias() -> pd.DataFrame:
     sitios_pais = df["sitios_pais"] if "sitios_pais" in df.columns else pd.Series([""] * len(df))
     df["pais"] = sitios_pais.apply(_join_unique)
 
+    # Tuplas, no listas: una lista es "unhashable" y hace que st.cache_data (p. ej. al exportar
+    # a Word/Excel, que recibe el DataFrame completo como argumento) no pueda hashear el
+    # DataFrame y caiga a un pickle mucho más lento en cada descarga.
     df["enlaces_externos_lista"] = df.get("enlaces_externos", pd.Series([None] * len(df))).apply(
-        lambda v: [u.strip() for u in str(v).split("|") if u.strip()] if isinstance(v, str) and v.strip() else []
+        lambda v: tuple(u.strip() for u in str(v).split("|") if u.strip()) if isinstance(v, str) and v.strip() else ()
     )
 
     # Palabras únicas normalizadas (sin tildes, en minúscula) de título + contenido completo,
     # precalculadas una sola vez (esta función ya está cacheada) para que el buscador difuso
     # del Explorador no tenga que re-tokenizar el catálogo completo en cada tecla.
     texto_busqueda = df["titulo"].fillna("") + " " + df["contenido_completo"].fillna("")
-    df["_palabras_busqueda"] = texto_busqueda.apply(lambda t: sorted(set(search_tokens(t))))
+    df["_palabras_busqueda"] = texto_busqueda.apply(lambda t: tuple(sorted(set(search_tokens(t)))))
 
     return df
 
