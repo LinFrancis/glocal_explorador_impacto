@@ -124,7 +124,7 @@ def experiences_to_word(rows: pd.DataFrame, contexto: str = "") -> bytes:
     style.font.name = "Calibri"
     style.font.size = Pt(10.5)
 
-    doc.add_heading("Experiencias seleccionadas — Catálogo Glocalminds", level=0)
+    doc.add_heading("Experiencias seleccionadas — Catálogo Glocalminds / Fundación Glocal", level=0)
     p = doc.add_paragraph()
     p.add_run(f"{len(rows)} experiencia(s)  ·  Generado el {date.today().strftime('%d-%m-%Y')}").italic = True
     if contexto.strip():

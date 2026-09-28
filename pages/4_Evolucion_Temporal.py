@@ -14,8 +14,8 @@ from utils.data import (
     classification_options,
     dimension_order,
     load_mapa_ubicaciones,
-    load_noticias,
 )
+from utils.filters import filters_summary_widget, get_filtered_df
 from utils.style import (
     DIMENSION_COLOR_MAPS,
     build_color_map,
@@ -32,15 +32,27 @@ WORLD_ZOOM = 1.0
 
 st.set_page_config(page_title="Evolución Temporal", layout="wide")
 inject()
+
+with st.sidebar:
+    filters_summary_widget()
+
 page_header(
     "Serie histórica y cronología",
     "Evolución en el Tiempo",
-    "258 experiencias con fecha real, obtenida directamente del sitio web (2010–2026).",
+    "Fecha real, obtenida directamente del sitio web (2010–2026). Respeta los criterios de "
+    "búsqueda activos en el Explorador; no duplica eventos contados en ambas fuentes.",
 )
 
-df = load_noticias()
+df = get_filtered_df(dedupe=True)
+if df.empty:
+    st.info("Ningún resultado con los criterios de búsqueda actuales.")
+    st.stop()
+
 con_fecha = df[df["tiene_fecha"]].copy()
 con_fecha["anio"] = con_fecha["anio"].astype(int)
+if con_fecha.empty:
+    st.info("Ninguno de los resultados filtrados tiene fecha registrada.")
+    st.stop()
 anio_min, anio_max = int(con_fecha["anio"].min()), int(con_fecha["anio"].max())
 
 
@@ -156,7 +168,7 @@ section_label("Avance dinámico por zona geográfica")
 st.caption("Presiona Play para ver cómo se expandió el catálogo en el mapa, año a año.")
 
 mapa = load_mapa_ubicaciones()
-mapa = mapa[mapa["lat"].notna()].copy()
+mapa = mapa[mapa["item"].isin(df["item"]) & mapa["lat"].notna()].copy()
 mapa = mapa.merge(df[["item", "anio", "tiene_fecha"]], on="item", how="left")
 mapa_fecha = mapa[mapa["tiene_fecha"] == True].copy()
 mapa_fecha["anio"] = mapa_fecha["anio"].astype(int)

@@ -80,6 +80,20 @@ def render_news_card(row: pd.Series):
         unsafe_allow_html=True,
     )
 
+    # -------------------------------------------------- badges fuente / entidad ejecutora
+    fuente = row.get("fuente")
+    es_fg = str(row.get("Fundación Glocal?", "")).strip() == "Fundación Glocal"
+    consultora = str(row.get("Consultora", "")).strip()
+    badges = []
+    if isinstance(fuente, str) and fuente.strip():
+        badges.append(fuente.strip())
+    if es_fg:
+        badges.append("Fundación Glocal")
+    if consultora and consultora != "0":
+        badges.append(f"Consultora {consultora}")
+    if badges:
+        st.markdown(_badges_html(badges, outline=True), unsafe_allow_html=True)
+
     # -------------------------------------------------- resumen + contenido completo
     resumen = row.get("descripcion_catalogo") or row.get("preview_contenido")
     if isinstance(resumen, str) and resumen.strip():

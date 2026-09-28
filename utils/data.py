@@ -352,6 +352,13 @@ def load_noticias() -> pd.DataFrame:
     df = df.dropna(subset=["titulo"]).reset_index(drop=True)
     df.insert(0, "item", range(1, len(df) + 1))
 
+    # "Fundación Glocal?" / "Consultora" vienen del Excel con un mix de 0 (numérico) y texto
+    # (p. ej. "Fundación Glocal", "EIRL") en la misma columna — normalizar a texto para que
+    # Streamlit/Arrow puedan serializar la columna sin error.
+    for col in ("Fundación Glocal?", "Consultora"):
+        if col in df.columns:
+            df[col] = df[col].apply(lambda v: "0" if pd.isna(v) or str(v).strip() in ("0", "0.0") else str(v).strip())
+
     df["metodologia"] = df["metodologia"].apply(_normalize_multilabel_text)
 
     if "fecha_publicacion_web" in df.columns:

@@ -8,21 +8,32 @@ import plotly.express as px
 import streamlit as st
 
 from utils.components import render_news_card
-from utils.data import load_cuencas, load_mapa_ubicaciones, load_noticias, load_subcuencas
+from utils.data import load_cuencas, load_mapa_ubicaciones, load_subcuencas
+from utils.filters import filters_summary_widget, get_filtered_df
 from utils.style import MAP_CENTER_CHILE, inject, page_header, section_label, style_fig
 
 st.set_page_config(page_title="Cuencas", layout="wide")
 inject()
+
+with st.sidebar:
+    filters_summary_widget()
+
 page_header(
     "Dato territorial",
     "Cuencas hidrográficas",
-    "Vinculación territorial de las experiencias a la jerarquía de cuencas de Chile (BNA/DGA).",
+    "Vinculación territorial de las experiencias a la jerarquía de cuencas de Chile (BNA/DGA). "
+    "Respeta los criterios de búsqueda activos en el Explorador.",
 )
 
-mapa = load_mapa_ubicaciones()
 cuencas = load_cuencas()
 subcuencas = load_subcuencas()
-df = load_noticias()
+df = get_filtered_df(dedupe=True)
+if df.empty:
+    st.info("Ningún resultado con los criterios de búsqueda actuales.")
+    st.stop()
+
+mapa_full = load_mapa_ubicaciones()
+mapa = mapa_full[mapa_full["item"].isin(df["item"])]
 
 
 @st.dialog("Ficha de la experiencia", width="large")
@@ -67,6 +78,10 @@ style_fig(fig, height=440, title="Top 20 cuencas con más experiencias vinculada
 st.plotly_chart(fig, width="stretch")
 
 st.divider()
+
+if ranking.empty:
+    st.info("Ninguna experiencia filtrada está vinculada a una cuenca.")
+    st.stop()
 
 section_label("Explorar una cuenca en detalle")
 cuenca_sel = st.selectbox(

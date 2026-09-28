@@ -12,9 +12,9 @@ from utils.data import (
     cap_categories,
     dimension_order,
     load_mapa_ubicaciones,
-    load_noticias,
     map_color_options,
 )
+from utils.filters import filters_summary_widget, get_filtered_df
 from utils.style import (
     DIMENSION_COLOR_MAPS,
     build_color_map,
@@ -31,15 +31,21 @@ WORLD_ZOOM = 1.0
 
 st.set_page_config(page_title="Mapa", layout="wide")
 inject()
+
+with st.sidebar:
+    filters_summary_widget()
+
 page_header(
     "Vista geográfica",
     "Mapa de experiencias",
     "Tres niveles de vista: país, ciudad/localidad y coordenadas específicas. Cada categoría usa "
-    "siempre el mismo color y el mismo orden, sin importar el nivel de agregación elegido.",
+    "siempre el mismo color y el mismo orden, sin importar el nivel de agregación elegido. "
+    "Respeta los criterios de búsqueda activos en el Explorador.",
 )
 
+df = get_filtered_df(dedupe=False)
 mapa_full = load_mapa_ubicaciones()
-df = load_noticias()
+mapa_full = mapa_full[mapa_full["item"].isin(df["item"])]
 
 # `pais`, `categoria_macro_primary` y `eje_gcaa_primary` ya vienen calculados de forma centralizada
 # en load_mapa_ubicaciones(). attach_map_dimensions() añade una columna *_primary por CADA

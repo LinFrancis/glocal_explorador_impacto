@@ -7,8 +7,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import streamlit as st
 
 from utils.components import render_news_card
-from utils.data import filter_by_multilabel, get_options, load_noticias
+from utils.data import load_noticias
 from utils.export import experiences_to_excel, experiences_to_word
+from utils.filters import apply_search_filters, render_search_filters
 from utils.style import inject, page_header, section_label
 
 st.set_page_config(page_title="Explorador Avanzado", layout="wide")
@@ -17,18 +18,14 @@ page_header(
     "Búsqueda multicriterio",
     "Explorador Avanzado",
     "Combina cualquier número de filtros. Dentro de un mismo filtro se combina con 'o'; entre "
-    "filtros distintos, con 'y'. Marca experiencias con las casillas para abrir su ficha o "
-    "descargarlas en Word y Excel para una postulación.",
+    "filtros distintos, con 'y'. Estos mismos criterios se aplican también en Mapa, Evolución "
+    "Temporal, Cruces y Correlaciones y Cuencas — para ver todo, quita los filtros.",
 )
 
 df = load_noticias()
-ACTORES_COL = "actores_normalizados" if "actores_normalizados" in df.columns else "actores"
-
-
-@st.dialog("Ficha de la experiencia", width="large")
-def _show_dialog(item_id: int):
-    row = df[df["item"] == item_id].iloc[0]
-    render_news_card(row)
+ITEM_ACTIVO_KEY = "explorador_item_activo"
+PAGINA_KEY = "explorador_pagina_catalogo"
+POR_PAGINA = 20
 
 
 @st.cache_data(show_spinner=False)
@@ -42,79 +39,22 @@ def _word_bytes(item_ids: tuple[int, ...], contexto: str) -> bytes:
 
 
 with st.sidebar:
-    st.markdown("**Filtros**")
-    st.page_link("pages/8_Glosario.py", label="¿Qué significa cada categoría? → Glosario")
+    criterios = render_search_filters(df)
 
-    texto = st.text_input("Buscar texto en título o contenido")
-
-    f_macro = st.multiselect("Categoría macro", get_options(df, "categoria_macro"))
-    f_cat = st.multiselect("Categoría temática", get_options(df, "categorias"))
-    f_meto = st.multiselect("Metodología", get_options(df, "metodologia"))
-    f_actor = st.multiselect("Actores institucionales", get_options(df, ACTORES_COL))
-
-    st.divider()
-    f_gcaa_eje = st.multiselect("Eje GCAA", get_options(df, "eje_gcaa"))
-    f_gcaa_obj = st.multiselect("Objetivo GCAA", get_options(df, "objetivo_gcaa"))
-    f_resil = st.multiselect("Atributo de resiliencia", get_options(df, "atributos_resiliencia"))
-    f_subresil = st.multiselect("Sub-atributo de resiliencia", get_options(df, "subatributos_resiliencia"))
-
-    st.divider()
-    f_benef_dir = st.multiselect("Beneficiarios directos", get_options(df, "beneficiarios_directos"))
-    f_benef_ind = st.multiselect("Beneficiarios indirectos", get_options(df, "beneficiarios_indirectos"))
-    f_genero = st.radio("Enfoque de género", ["Todos", "Solo con enfoque explícito", "Sin enfoque"], index=0)
-
-    st.divider()
-    if df["tiene_fecha"].any():
-        anio_min, anio_max = int(df["anio"].min()), int(df["anio"].max())
-        f_anios = st.slider("Año", anio_min, anio_max, (anio_min, anio_max))
-        f_incluir_sin_fecha = st.checkbox("Incluir experiencias sin fecha registrada", value=True)
-    else:
-        f_anios = None
-        f_incluir_sin_fecha = True
-
-    if st.button("Limpiar filtros"):
-        st.rerun()
-
-# ------------------------------------------------------------ aplicar filtros
-result = df.copy()
-
-if texto:
-    t = texto.lower()
-    result = result[
-        result["titulo"].astype(str).str.lower().str.contains(t, na=False)
-        | result["contenido_completo"].astype(str).str.lower().str.contains(t, na=False)
-    ]
-
-result = filter_by_multilabel(result, "categoria_macro", f_macro)
-result = filter_by_multilabel(result, "categorias", f_cat)
-result = filter_by_multilabel(result, "metodologia", f_meto)
-result = filter_by_multilabel(result, ACTORES_COL, f_actor)
-result = filter_by_multilabel(result, "eje_gcaa", f_gcaa_eje)
-result = filter_by_multilabel(result, "objetivo_gcaa", f_gcaa_obj)
-result = filter_by_multilabel(result, "atributos_resiliencia", f_resil)
-result = filter_by_multilabel(result, "subatributos_resiliencia", f_subresil)
-result = filter_by_multilabel(result, "beneficiarios_directos", f_benef_dir)
-result = filter_by_multilabel(result, "beneficiarios_indirectos", f_benef_ind)
-
-if f_genero == "Solo con enfoque explícito":
-    result = result[result["enfoque_genero"].astype(str).str.startswith("Sí")]
-elif f_genero == "Sin enfoque":
-    result = result[~result["enfoque_genero"].astype(str).str.startswith("Sí")]
-
-if f_anios is not None:
-    mask_rango = result["anio"].between(f_anios[0], f_anios[1])
-    if f_incluir_sin_fecha:
-        mask_rango = mask_rango | (~result["tiene_fecha"])
-    result = result[mask_rango]
+result = apply_search_filters(df, criterios)
 
 # ------------------------------------------------------------ resultados
 st.metric("Experiencias encontradas", f"{len(result)} de {len(df)}")
 
 # Orden de columnas pedido: Título · Año · País · Resumen · Texto completo · Link · (todo lo demás).
+ACTORES_COL = "actores_normalizados" if "actores_normalizados" in df.columns else "actores"
 COLUMN_ORDER = [
     ("titulo", "Título", "text"),
     ("anio", "Año", "year"),
     ("pais", "País", "text"),
+    ("fuente", "Fuente", "text"),
+    ("Fundación Glocal?", "Fundación Glocal", "text"),
+    ("Consultora", "Consultora", "text"),
     ("descripcion_catalogo", "Resumen", "text"),
     ("contenido_completo", "Texto completo", "text"),
     ("url_noticia", "Link", "link"),
@@ -147,67 +87,60 @@ for c, label, kind in cols_present:
     else:
         col_cfg[c] = st.column_config.TextColumn(label, width="medium")
 
-st.caption(
-    "Marca una o varias experiencias con las casillas de la izquierda. Con **una** marcada puedes "
-    "abrir su **ficha completa** (con todas las categorizaciones, más de lo que muestra la web "
-    "original). Con **una o más**, puedes descargarlas en **Word** y **Excel** para una postulación."
-)
-event = st.dataframe(
-    display_df,
-    width="stretch",
-    hide_index=True,
-    height=560,
-    on_select="rerun",
-    selection_mode="multi-row",
-    column_config=col_cfg,
-)
+with st.expander("Ver como planilla", expanded=False):
+    st.caption(
+        "Marca una o varias filas con las casillas de la izquierda para exportarlas en Word y "
+        "Excel para una postulación."
+    )
+    event = st.dataframe(
+        display_df,
+        width="stretch",
+        hide_index=True,
+        height=560,
+        on_select="rerun",
+        selection_mode="multi-row",
+        column_config=col_cfg,
+    )
+    selected_rows = event.selection.rows if event and event.selection else []
+    sel_df = result.iloc[selected_rows] if selected_rows else result.iloc[[]]
+    sel_ids = tuple(int(i) for i in sel_df["item"].tolist())
 
-selected_rows = event.selection.rows if event and event.selection else []
-sel_df = result.iloc[selected_rows] if selected_rows else result.iloc[[]]
-sel_ids = tuple(int(i) for i in sel_df["item"].tolist())
+    st.divider()
+    section_label(f"Selección para exportar — {len(sel_ids)} experiencia(s)")
 
-st.divider()
-section_label(f"Selección para exportar — {len(sel_ids)} experiencia(s)")
-
-if not sel_ids:
-    st.info("Marca experiencias en la tabla para abrir su ficha o descargarlas.")
-else:
-    if len(sel_ids) == 1:
-        if st.button("📄 Ver ficha completa de la experiencia marcada", type="primary"):
-            _show_dialog(sel_ids[0])
+    if not sel_ids:
+        st.info("Marca experiencias en la tabla para descargarlas.")
     else:
-        st.caption("Para ver una ficha, deja solo una experiencia marcada.")
+        contexto = st.text_input(
+            "¿Para qué es esta selección? (opcional, se incluye en el encabezado del Word)",
+            placeholder="Ej.: Postulación a fondo de apoyo a comunidades educativas — antecedentes de experiencias previas",
+        )
+        d1, d2, d3 = st.columns(3)
+        d1.download_button(
+            "⬇️ Word (.docx)",
+            data=_word_bytes(sel_ids, contexto),
+            file_name="experiencias_seleccionadas.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            width="stretch",
+        )
+        d2.download_button(
+            "⬇️ Excel (.xlsx)",
+            data=_excel_bytes(sel_ids),
+            file_name="experiencias_seleccionadas.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width="stretch",
+        )
+        d3.download_button(
+            "⬇️ CSV",
+            data=sel_df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+            file_name="experiencias_seleccionadas.csv",
+            mime="text/csv",
+            width="stretch",
+        )
 
-    contexto = st.text_input(
-        "¿Para qué es esta selección? (opcional, se incluye en el encabezado del Word)",
-        placeholder="Ej.: Postulación a fondo de apoyo a comunidades educativas — antecedentes de experiencias previas",
-    )
-    d1, d2, d3 = st.columns(3)
-    d1.download_button(
-        "⬇️ Word (.docx)",
-        data=_word_bytes(sel_ids, contexto),
-        file_name="experiencias_seleccionadas.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        width="stretch",
-    )
-    d2.download_button(
-        "⬇️ Excel (.xlsx)",
-        data=_excel_bytes(sel_ids),
-        file_name="experiencias_seleccionadas.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        width="stretch",
-    )
-    d3.download_button(
-        "⬇️ CSV",
-        data=sel_df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
-        file_name="experiencias_seleccionadas.csv",
-        mime="text/csv",
-        width="stretch",
-    )
-
-with st.expander("Descargar TODOS los resultados filtrados (sin marcar uno por uno)"):
+    st.divider()
     st.download_button(
-        "⬇️ CSV con los " + str(len(result)) + " resultados",
+        "⬇️ CSV con los " + str(len(result)) + " resultados filtrados",
         data=result.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
         file_name="experiencias_filtradas.csv",
         mime="text/csv",
@@ -229,3 +162,81 @@ with st.expander("Descargar TODOS los resultados filtrados (sin marcar uno por u
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             width="stretch",
         )
+
+# ------------------------------------------------------------ catálogo de lectura (baja fricción)
+section_label("Catálogo de resultados — elige una para leerla completa")
+
+catalogo = result.sort_values("fecha_parsed", ascending=False, na_position="last").reset_index(drop=True)
+n_total = len(catalogo)
+n_paginas = max(1, -(-n_total // POR_PAGINA))
+
+if PAGINA_KEY not in st.session_state:
+    st.session_state[PAGINA_KEY] = 0
+st.session_state[PAGINA_KEY] = min(st.session_state[PAGINA_KEY], n_paginas - 1)
+
+if n_total == 0:
+    st.info("Ningún resultado con los filtros actuales.")
+else:
+    if n_paginas > 1:
+        pc1, pc2, pc3 = st.columns([1, 2, 1])
+        with pc1:
+            if st.button("← Anteriores", disabled=st.session_state[PAGINA_KEY] <= 0):
+                st.session_state[PAGINA_KEY] -= 1
+                st.rerun()
+        with pc2:
+            st.markdown(
+                f"<div style='text-align:center'>Página {st.session_state[PAGINA_KEY] + 1} de {n_paginas}</div>",
+                unsafe_allow_html=True,
+            )
+        with pc3:
+            if st.button("Siguientes →", disabled=st.session_state[PAGINA_KEY] >= n_paginas - 1):
+                st.session_state[PAGINA_KEY] += 1
+                st.rerun()
+
+    inicio = st.session_state[PAGINA_KEY] * POR_PAGINA
+    pagina_df = catalogo.iloc[inicio: inicio + POR_PAGINA]
+
+    for _, row in pagina_df.iterrows():
+        macro = str(row.get("categoria_macro_primary") or row.get("categoria_macro") or "").split(";")[0].strip() or "Sin categoría"
+        fecha_txt = row["fecha_parsed"].strftime("%Y") if row.get("tiene_fecha") else "Sin fecha"
+        lugar_txt = str(row.get("lugar") or "").split(";")[0].strip() or "Sin lugar"
+        resumen = str(row.get("descripcion_catalogo") or row.get("preview_contenido") or "").strip()
+        resumen_corto = (resumen[:160] + "…") if len(resumen) > 160 else resumen
+
+        c1, c2 = st.columns([5, 1])
+        with c1:
+            st.markdown(f"**{row['titulo']}**")
+            st.caption(f"{fecha_txt} · {lugar_txt} · {macro}")
+            if resumen_corto:
+                st.caption(resumen_corto)
+        with c2:
+            if st.button("📄 Leer", key=f"leer_{row['item']}", width="stretch"):
+                st.session_state[ITEM_ACTIVO_KEY] = int(row["item"])
+                st.rerun()
+        st.divider()
+
+# ------------------------------------------------------------ ficha del ítem activo
+item_activo = st.session_state.get(ITEM_ACTIVO_KEY)
+if item_activo is not None and item_activo in set(catalogo["item"]):
+    st.markdown("### Ficha completa")
+    ids_orden = catalogo["item"].tolist()
+    pos = ids_orden.index(item_activo)
+
+    n1, n2, n3 = st.columns([1, 2, 1])
+    with n1:
+        if st.button("← Anterior", disabled=pos <= 0, key="ficha_anterior"):
+            st.session_state[ITEM_ACTIVO_KEY] = ids_orden[pos - 1]
+            st.rerun()
+    with n3:
+        if st.button("Siguiente →", disabled=pos >= len(ids_orden) - 1, key="ficha_siguiente"):
+            st.session_state[ITEM_ACTIVO_KEY] = ids_orden[pos + 1]
+            st.rerun()
+    with n2:
+        if st.button("✕ Cerrar ficha", key="ficha_cerrar", width="stretch"):
+            st.session_state.pop(ITEM_ACTIVO_KEY, None)
+            st.rerun()
+
+    with st.container(border=True):
+        render_news_card(catalogo[catalogo["item"] == item_activo].iloc[0])
+elif item_activo is not None:
+    st.session_state.pop(ITEM_ACTIVO_KEY, None)

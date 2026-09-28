@@ -7,7 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import plotly.express as px
 import streamlit as st
 
-from utils.data import get_options, load_mapa_ubicaciones, load_noticias
+from utils.data import get_options, load_mapa_ubicaciones
+from utils.filters import filters_summary_widget, get_filtered_df
 from utils.style import LOGO_PATH, inject, page_header, section_label, style_fig
 
 st.set_page_config(
@@ -15,6 +16,9 @@ st.set_page_config(
     layout="wide",
 )
 inject()
+
+with st.sidebar:
+    filters_summary_widget()
 
 if LOGO_PATH.exists():
     lc1, lc2, lc3 = st.columns([1, 2, 1])
@@ -24,12 +28,14 @@ if LOGO_PATH.exists():
 page_header(
     "Explorador Impacto Glocal",
     "Panorama general del catálogo",
-    "Catálogo de experiencias de facilitación de Glocalminds, mapeadas contra marcos internacionales "
-    "de acción climática y resiliencia.",
+    "Catálogo de experiencias de facilitación de Glocalminds y Fundación Glocal, mapeadas contra "
+    "marcos internacionales de acción climática y resiliencia. Si hay criterios de búsqueda "
+    "activos (definidos en el Explorador), este panorama refleja ese subconjunto.",
 )
 
-df = load_noticias()
-mapa = load_mapa_ubicaciones()
+df = get_filtered_df(dedupe=True)
+mapa_full = load_mapa_ubicaciones()
+mapa = mapa_full[mapa_full["item"].isin(df["item"])]
 
 # ---------------------------------------------------------------- KPIs
 total = len(df)

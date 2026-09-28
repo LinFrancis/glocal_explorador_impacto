@@ -84,8 +84,9 @@ secciones = [
     (
         "Fecha de publicación",
         "fecha_publicacion_web",
-        "Fecha real obtenida directamente del sitio web de Glocalminds (API de WordPress), no de texto "
-        "libre. Cubre el 100% del catálogo, de 2010 a 2026.",
+        "Fecha real obtenida directamente del sitio web de origen (API de WordPress de "
+        "glocalminds.com o fundacionglocal.org, según la columna 'fuente'), no de texto libre. "
+        "Cubre el 100% del catálogo, de 2010 a 2026.",
     ),
 ]
 

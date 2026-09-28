@@ -9,18 +9,27 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from utils.components import render_news_card
-from utils.data import COLUMN_LABELS, RESILIENCE_TAXONOMY, explode_multilabel, load_noticias, resilience_counts
+from utils.data import COLUMN_LABELS, RESILIENCE_TAXONOMY, explode_multilabel, resilience_counts
+from utils.filters import filters_summary_widget, get_filtered_df
 from utils.style import DIMENSION_COLOR_MAPS, inject, page_header, section_label, style_fig
 
 st.set_page_config(page_title="Cruces y Correlaciones", layout="wide")
 inject()
+
+with st.sidebar:
+    filters_summary_widget()
+
 page_header(
     "Análisis relacional",
     "Cruces y Correlaciones",
-    "Explora cómo se relacionan las distintas dimensiones del catálogo entre sí.",
+    "Explora cómo se relacionan las distintas dimensiones del catálogo entre sí. Respeta los "
+    "criterios de búsqueda activos en el Explorador; no duplica eventos contados en ambas fuentes.",
 )
 
-df = load_noticias()
+df = get_filtered_df(dedupe=True)
+if df.empty:
+    st.info("Ningún resultado con los criterios de búsqueda actuales.")
+    st.stop()
 
 
 @st.dialog("Ficha de la experiencia", width="large")
