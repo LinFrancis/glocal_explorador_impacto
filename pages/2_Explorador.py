@@ -42,21 +42,21 @@ st.metric("Experiencias encontradas", f"{len(df)} de {len(df_total)}")
 df_dedup = df[~df["es_duplicado_secundario"].astype(bool)] if "es_duplicado_secundario" in df.columns else df
 
 st.markdown('<div id="resultados"></div>', unsafe_allow_html=True)
-with st.expander(f"📋 Resultados ({len(df)})", expanded=False):
+with st.expander(f"Resultados ({len(df)})", expanded=False):
     resultados.render(df)
 
 st.markdown('<div id="mapa"></div>', unsafe_allow_html=True)
-with st.expander("🗺️ Mapa", expanded=False):
+with st.expander("Mapa", expanded=False):
     mapa.render(df, criterios)
 
 st.markdown('<div id="evolucion"></div>', unsafe_allow_html=True)
-with st.expander("📈 Evolución en el Tiempo", expanded=False):
+with st.expander("Evolución en el Tiempo", expanded=False):
     evolucion.render(df_dedup, criterios)
 
 st.markdown('<div id="cruces"></div>', unsafe_allow_html=True)
-with st.expander("🔀 Cruces y Correlaciones", expanded=False):
+with st.expander("Cruces y Correlaciones", expanded=False):
     cruces.render(df_dedup, criterios)
 
 st.markdown('<div id="cuencas"></div>', unsafe_allow_html=True)
-with st.expander("🌊 Cuencas", expanded=False):
+with st.expander("Cuencas", expanded=False):
     cuencas.render(df_dedup, criterios)

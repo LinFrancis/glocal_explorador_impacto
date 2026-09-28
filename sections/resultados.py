@@ -107,26 +107,26 @@ def render(df):
             )
             d1, d2, d3 = st.columns(3)
             d1.download_button(
-                "⬇️ Word (.docx)", data=_word_bytes(df, sel_ids, contexto),
+                "Word (.docx)", data=_word_bytes(df, sel_ids, contexto),
                 file_name="experiencias_seleccionadas.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 width="stretch", key="resultados_dl_word_sel",
             )
             d2.download_button(
-                "⬇️ Excel (.xlsx)", data=_excel_bytes(df, sel_ids),
+                "Excel (.xlsx)", data=_excel_bytes(df, sel_ids),
                 file_name="experiencias_seleccionadas.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 width="stretch", key="resultados_dl_excel_sel",
             )
             d3.download_button(
-                "⬇️ CSV", data=sel_df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
+                "CSV", data=sel_df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
                 file_name="experiencias_seleccionadas.csv", mime="text/csv",
                 width="stretch", key="resultados_dl_csv_sel",
             )
 
         st.divider()
         st.download_button(
-            "⬇️ CSV con los " + str(len(df)) + " resultados filtrados",
+            "CSV con los " + str(len(df)) + " resultados filtrados",
             data=df.drop(columns=["item"], errors="ignore").to_csv(index=False).encode("utf-8-sig"),
             file_name="experiencias_filtradas.csv", mime="text/csv", key="resultados_dl_csv_todos",
         )
@@ -134,13 +134,13 @@ def render(df):
             all_ids = tuple(int(i) for i in df["item"].tolist())
             cc1, cc2 = st.columns(2)
             cc1.download_button(
-                "⬇️ Word (" + str(len(df)) + ")", data=_word_bytes(df, all_ids, ""),
+                "Word (" + str(len(df)) + ")", data=_word_bytes(df, all_ids, ""),
                 file_name="experiencias_filtradas.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 width="stretch", key="resultados_dl_word_todos",
             )
             cc2.download_button(
-                "⬇️ Excel (" + str(len(df)) + ")", data=_excel_bytes(df, all_ids),
+                "Excel (" + str(len(df)) + ")", data=_excel_bytes(df, all_ids),
                 file_name="experiencias_filtradas.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 width="stretch", key="resultados_dl_excel_todos",
@@ -193,7 +193,7 @@ def render(df):
             if resumen_corto:
                 st.caption(resumen_corto)
         with c2:
-            if st.button("📄 Leer", key=f"resultados_leer_{row['item']}", width="stretch"):
+            if st.button("Leer", key=f"resultados_leer_{row['item']}", width="stretch"):
                 st.session_state[ITEM_ACTIVO_KEY] = int(row["item"])
                 st.rerun()
         st.divider()

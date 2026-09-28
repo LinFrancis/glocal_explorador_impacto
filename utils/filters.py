@@ -210,11 +210,11 @@ def filters_summary_widget():
     criterios = st.session_state.get(CRITERIOS_KEY)
     n = _n_criterios_activos(criterios)
     if n:
-        st.caption(f"🔎 {n} criterio(s) de búsqueda activo(s) (definidos en el Explorador).")
+        st.caption(f"{n} criterio(s) de búsqueda activo(s) (definidos en el Explorador).")
         if st.button("Quitar todos los filtros", key="quitar_filtros_global"):
             st.session_state.pop(CRITERIOS_KEY, None)
             st.rerun()
     else:
-        st.caption("🔎 Sin filtros — viendo todo el catálogo.")
+        st.caption("Sin filtros — viendo todo el catálogo.")
     st.page_link("pages/2_Explorador.py", label="Editar criterios de búsqueda →")
     st.divider()
