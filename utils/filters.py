@@ -10,10 +10,12 @@ así que los criterios elegidos en el Explorador persisten al navegar a cualquie
 import streamlit as st
 
 from utils.data import filter_by_multilabel, get_options, load_noticias
+from utils.style import logo_fundacion_html, logo_glocalminds_html
 
 CRITERIOS_KEY = "criterios_busqueda"
 
-CONSULTORA_OPCIONES = ["EIRL", "SpA", "Ltda"]
+# Una opción por cada personalidad jurídica real que ejecuta las experiencias del catálogo.
+PERSONALIDAD_OPCIONES = ["Fundación Glocal", "Consultora EIRL", "Consultora SpA", "Consultora Ltda"]
 
 
 def render_search_filters(df) -> dict:
@@ -28,12 +30,20 @@ def render_search_filters(df) -> dict:
     texto = st.text_input("Buscar texto en título o contenido")
 
     f_fuente = st.multiselect("Fuente", get_options(df, "fuente")) if "fuente" in df.columns else []
-    f_fg = st.radio(
-        "Entidad: Fundación Glocal",
-        ["Todas", "Solo Fundación Glocal", "Solo sin Fundación Glocal"],
-        index=0,
-    ) if "Fundación Glocal?" in df.columns else "Todas"
-    f_consultora = st.multiselect("Consultora ejecutora", CONSULTORA_OPCIONES) if "Consultora" in df.columns else []
+    f_tipo_info = st.multiselect("Tipo de información", get_options(df, "tipo_informacion")) if "tipo_informacion" in df.columns else []
+
+    f_personalidad = []
+    if "Fundación Glocal?" in df.columns or "Consultora" in df.columns:
+        f_personalidad = st.multiselect("Personalidad jurídica ejecutora", PERSONALIDAD_OPCIONES)
+        sufijo_preview = entidad_titulo_sufijo({"personalidad_juridica": f_personalidad})
+        if sufijo_preview:
+            logos_html = ""
+            if "Fundación Glocal" in f_personalidad:
+                logos_html += logo_fundacion_html(22)
+            if any(o != "Fundación Glocal" for o in f_personalidad):
+                logos_html += logo_glocalminds_html(22)
+            if logos_html:
+                st.markdown(logos_html, unsafe_allow_html=True)
 
     st.divider()
     f_macro = st.multiselect("Categoría macro", get_options(df, "categoria_macro"))
@@ -66,8 +76,8 @@ def render_search_filters(df) -> dict:
     criterios = {
         "texto": texto,
         "fuente": f_fuente,
-        "fundacion_glocal": f_fg,
-        "consultora": f_consultora,
+        "tipo_informacion": f_tipo_info,
+        "personalidad_juridica": f_personalidad,
         "categoria_macro": f_macro,
         "categorias": f_cat,
         "metodologia": f_meto,
@@ -98,19 +108,26 @@ def _n_criterios_activos(criterios: dict) -> int:
     if criterios.get("texto"):
         n += 1
     for key in (
-        "fuente", "consultora", "categoria_macro", "categorias", "metodologia", "actores",
-        "eje_gcaa", "objetivo_gcaa", "atributos_resiliencia", "subatributos_resiliencia",
-        "beneficiarios_directos", "beneficiarios_indirectos",
+        "fuente", "tipo_informacion", "personalidad_juridica", "categoria_macro", "categorias",
+        "metodologia", "actores", "eje_gcaa", "objetivo_gcaa", "atributos_resiliencia",
+        "subatributos_resiliencia", "beneficiarios_directos", "beneficiarios_indirectos",
     ):
         if criterios.get(key):
             n += 1
-    if criterios.get("fundacion_glocal") not in (None, "Todas"):
-        n += 1
     if criterios.get("genero") not in (None, "Todos"):
         n += 1
     if criterios.get("anios") is not None:
         n += 1
     return n
+
+
+def entidad_titulo_sufijo(criterios: dict) -> str:
+    """Sufijo para agregar al título de cada gráfico cuando hay un filtro de personalidad
+    jurídica activo, para que el gráfico se lea en su contexto (p. ej. " — Fundación Glocal")."""
+    seleccion = (criterios or {}).get("personalidad_juridica") or []
+    if not seleccion or len(seleccion) >= len(PERSONALIDAD_OPCIONES):
+        return ""
+    return " — " + " + ".join(seleccion)
 
 
 def apply_search_filters(df, criterios: dict):
@@ -133,14 +150,18 @@ def apply_search_filters(df, criterios: dict):
     if criterios.get("fuente") and "fuente" in result.columns:
         result = result[result["fuente"].isin(criterios["fuente"])]
 
-    fg = criterios.get("fundacion_glocal")
-    if fg == "Solo Fundación Glocal" and "Fundación Glocal?" in result.columns:
-        result = result[result["Fundación Glocal?"].astype(str) == "Fundación Glocal"]
-    elif fg == "Solo sin Fundación Glocal" and "Fundación Glocal?" in result.columns:
-        result = result[result["Fundación Glocal?"].astype(str) != "Fundación Glocal"]
+    if criterios.get("tipo_informacion") and "tipo_informacion" in result.columns:
+        result = result[result["tipo_informacion"].isin(criterios["tipo_informacion"])]
 
-    if criterios.get("consultora") and "Consultora" in result.columns:
-        result = result[result["Consultora"].astype(str).isin(criterios["consultora"])]
+    personalidad = criterios.get("personalidad_juridica")
+    if personalidad and ("Fundación Glocal?" in result.columns or "Consultora" in result.columns):
+        mask = False
+        if "Fundación Glocal" in personalidad and "Fundación Glocal?" in result.columns:
+            mask = mask | (result["Fundación Glocal?"].astype(str) == "Fundación Glocal")
+        consultora_tipos = [o.replace("Consultora ", "") for o in personalidad if o != "Fundación Glocal"]
+        if consultora_tipos and "Consultora" in result.columns:
+            mask = mask | result["Consultora"].astype(str).isin(consultora_tipos)
+        result = result[mask]
 
     result = filter_by_multilabel(result, "categoria_macro", criterios.get("categoria_macro"))
     result = filter_by_multilabel(result, "categorias", criterios.get("categorias"))

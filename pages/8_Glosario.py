@@ -16,7 +16,6 @@ from utils.data import (
 )
 from utils.style import inject, page_header, section_label
 
-st.set_page_config(page_title="Glosario", layout="wide")
 inject()
 page_header(
     "Referencia",

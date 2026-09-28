@@ -7,6 +7,7 @@ import requests
 import streamlit as st
 
 from utils.data import format_fecha_es
+from utils.style import entidad_logo_html
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -80,28 +81,26 @@ def render_news_card(row: pd.Series):
         unsafe_allow_html=True,
     )
 
-    # -------------------------------------------------- badges fuente / entidad ejecutora
+    # -------------------------------------------------- badge fuente + logo de entidad ejecutora
     fuente = row.get("fuente")
     es_fg = str(row.get("Fundación Glocal?", "")).strip() == "Fundación Glocal"
     consultora = str(row.get("Consultora", "")).strip()
-    badges = []
     if isinstance(fuente, str) and fuente.strip():
-        badges.append(fuente.strip())
-    if es_fg:
-        badges.append("Fundación Glocal")
-    if consultora and consultora != "0":
-        badges.append(f"Consultora {consultora}")
-    if badges:
-        st.markdown(_badges_html(badges, outline=True), unsafe_allow_html=True)
+        st.markdown(_badges_html([fuente.strip()], outline=True), unsafe_allow_html=True)
+    if es_fg or (consultora and consultora != "0"):
+        st.markdown(entidad_logo_html(es_fg, height=24), unsafe_allow_html=True)
 
-    # -------------------------------------------------- resumen + contenido completo
-    resumen = row.get("descripcion_catalogo") or row.get("preview_contenido")
-    if isinstance(resumen, str) and resumen.strip():
-        st.markdown(f"**{resumen.strip()}**")
-
+    # -------------------------------------------------- contenido completo
+    # Ojo: NO se muestra también "descripcion_catalogo"/"preview_contenido" — son un resumen
+    # hecho a partir de los primeros párrafos de este mismo texto, mostrar ambos duplica el
+    # contenido en la ficha. El resumen queda solo como respaldo si el texto completo faltara.
     contenido = row.get("contenido_completo")
-    if isinstance(contenido, str) and contenido.strip() and contenido.strip() != (resumen or "").strip():
+    if isinstance(contenido, str) and contenido.strip():
         st.markdown(contenido.strip())
+    else:
+        resumen = row.get("descripcion_catalogo") or row.get("preview_contenido")
+        if isinstance(resumen, str) and resumen.strip():
+            st.markdown(resumen.strip())
 
     st.divider()
 

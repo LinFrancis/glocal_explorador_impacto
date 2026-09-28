@@ -329,6 +329,25 @@ def attach_map_dimensions(mapa: pd.DataFrame, noticias: pd.DataFrame) -> pd.Data
     return out
 
 
+# Errores de espaciado heredados del scraping original (tags removidos sin dejar espacio):
+# minúscula/dígito pegado a una mayúscula ("laLey" -> "la Ley"), paréntesis/corchete/comilla de
+# cierre pegado a una letra ("(TNC)inició" -> "(TNC) inició"), punto pegado a la mayúscula
+# siguiente (fin de oración). No cubre el caso minúscula-a-minúscula (p. ej. "Naturalezaque"):
+# ese patrón no se puede corregir con regex sin diccionario, se deja tal cual.
+_MISSING_SPACE_CASE_RE = re.compile(r"([a-z0-9áéíóúñ])([A-ZÁÉÍÓÚÑ])")
+_MISSING_SPACE_PUNCT_RE = re.compile(r"([\)\]»”\"'])([A-Za-zÁÉÍÓÚÑáéíóúñ])")
+_MISSING_SPACE_SENTENCE_RE = re.compile(r"(\.)([A-ZÁÉÍÓÚÑ])")
+
+
+def _fix_missing_spaces(text):
+    if not isinstance(text, str) or not text.strip():
+        return text
+    text = _MISSING_SPACE_CASE_RE.sub(r"\1 \2", text)
+    text = _MISSING_SPACE_PUNCT_RE.sub(r"\1 \2", text)
+    text = _MISSING_SPACE_SENTENCE_RE.sub(r"\1 \2", text)
+    return text
+
+
 def _normalize_label(label):
     label = label.strip()
     return _METODOLOGIA_ALIASES.get(label.lower(), label)
@@ -360,6 +379,10 @@ def load_noticias() -> pd.DataFrame:
             df[col] = df[col].apply(lambda v: "0" if pd.isna(v) or str(v).strip() in ("0", "0.0") else str(v).strip())
 
     df["metodologia"] = df["metodologia"].apply(_normalize_multilabel_text)
+
+    for col in ("titulo", "titulo_catalogo", "descripcion_catalogo", "preview_contenido", "contenido_completo"):
+        if col in df.columns:
+            df[col] = df[col].apply(_fix_missing_spaces)
 
     if "fecha_publicacion_web" in df.columns:
         df["fecha_parsed"] = pd.to_datetime(df["fecha_publicacion_web"], errors="coerce")

@@ -9,7 +9,6 @@ import streamlit as st
 from utils.data import FUENTES_REALES_TEXT, get_options, load_noticias
 from utils.style import inject, page_header
 
-st.set_page_config(page_title="Marco Teórico y Fuentes", layout="wide")
 inject()
 page_header(
     "Marco conceptual",

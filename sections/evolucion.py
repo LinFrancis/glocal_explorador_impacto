@@ -1,0 +1,241 @@
+# -*- coding: utf-8 -*-
+"""Sección 'Evolución en el Tiempo' dentro de Explorador Glocal (antes página propia)."""
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+
+from utils.components import render_news_card
+from utils.data import (
+    cap_categories,
+    classification_options,
+    dimension_order,
+    load_mapa_ubicaciones,
+)
+from utils.filters import entidad_titulo_sufijo
+from utils.style import DIMENSION_COLOR_MAPS, build_color_map, section_label, style_fig
+
+WORLD_CENTER = {"lat": 20, "lon": 0}
+WORLD_ZOOM = 1.0
+
+
+def render(df, criterios=None):
+    sufijo = entidad_titulo_sufijo(criterios)
+
+    if df.empty:
+        st.info("Ningún resultado con los criterios de búsqueda actuales.")
+        return
+
+    con_fecha = df[df["tiene_fecha"]].copy()
+    con_fecha["anio"] = con_fecha["anio"].astype(int)
+    if con_fecha.empty:
+        st.info("Ninguno de los resultados filtrados tiene fecha registrada.")
+        return
+    anio_min, anio_max = int(con_fecha["anio"].min()), int(con_fecha["anio"].max())
+
+    @st.dialog("Ficha de la experiencia", width="large")
+    def _show_dialog(item_id: int):
+        row = df[df["item"] == item_id].iloc[0]
+        render_news_card(row)
+
+    cobertura = len(con_fecha) / len(df)
+    if cobertura >= 0.99:
+        st.success(
+            f"{len(con_fecha)} de {len(df)} experiencias ({cobertura:.0%}) tienen fecha, obtenida directamente "
+            "del sitio web (WordPress) — no depende de que el texto la mencione.",
+        )
+    else:
+        st.warning(
+            f"Solo {len(con_fecha)} de {len(df)} experiencias ({cobertura:.0%}) tienen fecha registrada. "
+            "Los gráficos de esta sección reflejan solo el subconjunto con fecha.",
+        )
+
+    DIM_OPTIONS = classification_options()
+    dim_label = st.selectbox("Desglosar por", list(DIM_OPTIONS.keys()), key="evol_desglosar_por")
+    dim_col = DIM_OPTIONS[dim_label]
+    color_map = DIMENSION_COLOR_MAPS.get(dim_col) or build_color_map(dimension_order(con_fecha, dim_col))
+
+    # ==================================================================== SERIES POR AÑO
+    section_label(f"Experiencias por año ({len(con_fecha)} con fecha)")
+    por_anio = con_fecha.groupby("anio").size().reset_index(name="n")
+    fig1 = px.bar(por_anio, x="anio", y="n", labels={"anio": "Año", "n": "N° experiencias"})
+    fig1.update_traces(marker_color="#0B6E4F", name="Experiencias", showlegend=True)
+    style_fig(fig1, height=300, title=f"Cantidad de experiencias publicadas por año{sufijo}", legend_title="Serie")
+    st.plotly_chart(fig1, width="stretch", key="evol_fig_anio")
+
+    section_label(f"Desglose por {dim_label.lower()} y año")
+    raw_col = dim_col.replace("_primary", "")
+    exploded = con_fecha.assign(
+        **{raw_col: con_fecha[raw_col].fillna("").astype(str).str.split(";")}
+    ).explode(raw_col)
+    exploded[raw_col] = exploded[raw_col].str.strip()
+    if raw_col == "enfoque_genero":
+        exploded[raw_col] = exploded[raw_col].apply(lambda v: "Sí" if v.startswith("Sí") else "No")
+    exploded = exploded[(exploded[raw_col] != "") & (exploded[raw_col].str.lower() != "no aplica")]
+
+    if len(exploded):
+        exploded[raw_col], order_full = cap_categories(exploded[raw_col], dimension_order(con_fecha, dim_col))
+        stacked = exploded.groupby(["anio", raw_col]).size().reset_index(name="n")
+        order = [c for c in order_full if c in stacked[raw_col].unique()]
+        fig2 = px.bar(
+            stacked, x="anio", y="n", color=raw_col,
+            category_orders={raw_col: order}, color_discrete_map=color_map,
+            labels={"anio": "Año", "n": "N° experiencias", raw_col: dim_label},
+        )
+        style_fig(fig2, height=380, title=f"Experiencias por año, desglosadas por {dim_label.lower()}{sufijo}", legend_title=dim_label)
+        st.plotly_chart(fig2, width="stretch", key="evol_fig_desglose")
+    else:
+        st.info(f"No hay experiencias con fecha y con un valor de '{dim_label}' distinto de 'No aplica'.")
+
+    section_label("Crecimiento acumulado")
+    acumulado = por_anio.sort_values("anio").copy()
+    acumulado["acumulado"] = acumulado["n"].cumsum()
+    fig3 = px.line(acumulado, x="anio", y="acumulado", markers=True, labels={"anio": "Año", "acumulado": "Total acumulado"})
+    fig3.update_traces(line_color="#0B6E4F", name="Total acumulado", showlegend=True)
+    style_fig(fig3, height=280, title=f"Crecimiento acumulado del catálogo{sufijo}", legend_title="Serie")
+    st.plotly_chart(fig3, width="stretch", key="evol_fig_acumulado")
+
+    st.divider()
+
+    # ==================================================================== ANIMACIONES
+    section_label("Avance dinámico por categoría")
+    st.caption("Presiona Play para ver cómo creció cada categoría macro, año a año.")
+
+    exploded_macro = con_fecha.assign(
+        categoria_macro=con_fecha["categoria_macro"].str.split(";")
+    ).explode("categoria_macro")
+    exploded_macro["categoria_macro"] = exploded_macro["categoria_macro"].str.strip()
+    exploded_macro = exploded_macro[exploded_macro["categoria_macro"] != ""]
+
+    counts_year_cat = exploded_macro.groupby(["anio", "categoria_macro"]).size().reset_index(name="n")
+    pivot = counts_year_cat.pivot(index="anio", columns="categoria_macro", values="n").fillna(0)
+    full_years = range(anio_min, anio_max + 1)
+    pivot = pivot.reindex(full_years, fill_value=0)
+    cum = pivot.cumsum()
+
+    macro_order = dimension_order(con_fecha, "categoria_macro_primary")
+    macro_order = [c for c in macro_order if c in cum.columns]
+    long_df = cum.reset_index().melt(id_vars="anio", var_name="categoria_macro", value_name="acumulado")
+
+    fig_race = px.bar(
+        long_df, x="acumulado", y="categoria_macro", color="categoria_macro",
+        animation_frame="anio", orientation="h",
+        range_x=[0, float(cum.values.max()) * 1.1],
+        category_orders={"categoria_macro": macro_order},
+        color_discrete_map=DIMENSION_COLOR_MAPS.get("categoria_macro_primary"),
+        labels={"acumulado": "Total acumulado", "categoria_macro": "Categoría macro", "anio": "Año"},
+    )
+    style_fig(
+        fig_race, height=440,
+        title=f"Avance acumulado por categoría macro (2010–2026){sufijo}",
+        legend_title="Categoría macro", showlegend=False,
+    )
+    if fig_race.layout.updatemenus:
+        fig_race.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 700
+        fig_race.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = 350
+        fig_race.layout.updatemenus[0].buttons[0].args[1]["transition"]["easing"] = "cubic-in-out"
+    st.plotly_chart(fig_race, width="stretch", key="evol_fig_race")
+    st.caption("Cada barra muestra el total acumulado de experiencias de esa categoría hasta el año seleccionado.")
+
+    section_label("Avance dinámico por zona geográfica")
+    st.caption("Presiona Play para ver cómo se expandió el catálogo en el mapa, año a año.")
+
+    mapa = load_mapa_ubicaciones()
+    mapa = mapa[mapa["item"].isin(df["item"]) & mapa["lat"].notna()].copy()
+    mapa = mapa.merge(df[["item", "anio", "tiene_fecha"]], on="item", how="left")
+    mapa_fecha = mapa[mapa["tiene_fecha"] == True].copy()
+
+    if mapa_fecha.empty:
+        st.info("Ninguno de los resultados filtrados con fecha tiene coordenadas geográficas.")
+    else:
+        mapa_fecha["anio"] = mapa_fecha["anio"].astype(int)
+        mapa_fecha["marker_size"] = 1
+
+        lat_centro = mapa_fecha["lat"].mean()
+        lon_centro = mapa_fecha["lon"].mean()
+        anclas = pd.DataFrame({
+            "categoria_macro_primary": macro_order,
+            "lat": lat_centro,
+            "lon": lon_centro,
+            "titulo": "",
+            "lugar_texto": "",
+            "marker_size": 0,
+        })
+
+        frames = []
+        for y in range(anio_min, anio_max + 1):
+            sub = mapa_fecha[mapa_fecha["anio"] <= y].copy()
+            sub["frame_anio"] = y
+            anclas_y = anclas.copy()
+            anclas_y["frame_anio"] = y
+            frames.append(pd.concat([sub, anclas_y], ignore_index=True))
+        cum_map_df = pd.concat(frames, ignore_index=True)
+
+        fig_map = px.scatter_map(
+            cum_map_df, lat="lat", lon="lon", color="categoria_macro_primary",
+            size="marker_size", size_max=9,
+            category_orders={"categoria_macro_primary": macro_order},
+            color_discrete_map=DIMENSION_COLOR_MAPS.get("categoria_macro_primary"),
+            animation_frame="frame_anio", hover_name="titulo",
+            hover_data={"lugar_texto": True, "lat": False, "lon": False, "marker_size": False},
+            labels={"categoria_macro_primary": "Categoría macro", "frame_anio": "Año"},
+            center=WORLD_CENTER, zoom=WORLD_ZOOM,
+        )
+        fig_map.update_layout(map_style="open-street-map")
+        style_fig(fig_map, height=560, title=f"Expansión geográfica acumulada, año a año{sufijo}", legend_title="Categoría macro")
+        if fig_map.layout.updatemenus:
+            fig_map.layout.updatemenus[0].buttons[0].args[1]["frame"]["duration"] = 700
+            fig_map.layout.updatemenus[0].buttons[0].args[1]["transition"]["duration"] = 350
+        st.plotly_chart(fig_map, width="stretch", key="evol_fig_mapa_animado")
+        st.caption(
+            f"Muestra todas las experiencias geolocalizadas con fecha ({mapa_fecha['item'].nunique()} "
+            f"experiencias, {mapa_fecha['lugar_texto'].nunique()} lugares), acumuladas hasta el año seleccionado."
+        )
+
+    st.divider()
+
+    # ==================================================================== CRONOLOGÍA
+    section_label("Cronología experiencia por experiencia")
+    st.caption("Cada punto es una experiencia individual, ordenada por su fecha real de publicación.")
+
+    carril_label = st.selectbox("Agrupar carriles por", list(DIM_OPTIONS.keys()), index=0, key="evol_carril_sel")
+    carril_col = DIM_OPTIONS[carril_label]
+    capped_carril, carril_order = cap_categories(con_fecha[carril_col], dimension_order(con_fecha, carril_col))
+    swim_df = con_fecha.assign(**{carril_col: capped_carril})
+    color_map_carril = DIMENSION_COLOR_MAPS.get(carril_col) or build_color_map(carril_order)
+
+    fig_swim = px.scatter(
+        swim_df, x="fecha_parsed", y=carril_col, color=carril_col,
+        category_orders={carril_col: carril_order}, color_discrete_map=color_map_carril,
+        hover_name="titulo",
+        hover_data={"fecha_parsed": "|%d %b %Y", carril_col: False},
+        labels={"fecha_parsed": "Fecha", carril_col: carril_label},
+    )
+    fig_swim.update_traces(marker=dict(size=9, line=dict(width=1, color="#FFFFFF")))
+    fig_swim.update_yaxes(title=None, categoryorder="array", categoryarray=carril_order)
+    fig_swim.update_xaxes(title="Fecha")
+    style_fig(fig_swim, height=460, legend_title=carril_label, title=f"Cronología de experiencias, agrupadas por {carril_label.lower()}{sufijo}")
+    st.plotly_chart(fig_swim, width="stretch", key="evol_fig_swim")
+
+    st.divider()
+
+    # ==================================================================== EXPLORAR POR AÑO
+    section_label("Explorar experiencias por año")
+    years = sorted(con_fecha["anio"].dropna().unique().astype(int).tolist(), reverse=True)
+    year_sel = st.select_slider("Año", options=years, value=years[0], key="evol_year_sel")
+    year_items = con_fecha[con_fecha["anio"] == year_sel].sort_values("fecha_parsed")
+    st.markdown(f"**{len(year_items)} experiencias en {year_sel}**")
+
+    for _, row in year_items.iterrows():
+        with st.container(border=True):
+            cA, cB, cC = st.columns([1, 4, 1])
+            with cA:
+                st.markdown(f"**{row['fecha_parsed'].strftime('%d %b %Y')}**")
+            with cB:
+                st.markdown(f"**{row['titulo']}**")
+                tags = [row["categoria_macro_primary"]]
+                if row["eje_gcaa_primary"].lower() != "no aplica":
+                    tags.append(row["eje_gcaa_primary"])
+                st.caption(" · ".join(tags))
+            with cC:
+                if st.button("Ver ficha", key=f"evol_ficha_{row['item']}", width="stretch"):
+                    _show_dialog(int(row["item"]))

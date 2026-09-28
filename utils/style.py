@@ -7,8 +7,10 @@ import streamlit as st
 
 FONT_FAMILY = "'Montserrat', -apple-system, 'Segoe UI', sans-serif"
 
-# Logo de marca (Glocalminds). Se muestra en el sidebar de todas las páginas vía inject().
+# Logos de marca. LOGO_PATH (Glocalminds) se muestra en el sidebar de todas las páginas vía
+# inject(). FUNDACION_LOGO_PATH se usa para marcar qué registros ejecutó Fundación Glocal.
 LOGO_PATH = Path(__file__).resolve().parent.parent / "images" / "logoGnaranja.png"
+FUNDACION_LOGO_PATH = Path(__file__).resolve().parent.parent / "images" / "logo_fundacion_glocal.svg"
 
 # Ubicación inicial de los mapas de experiencias (Mapa, Evolución): vista de mundo completo,
 # para ver todos los países a la vez. El usuario puede acercar después.
@@ -260,6 +262,11 @@ button[data-baseweb="tab"] {{ padding: 6px 12px !important; }}
 /* -------- expander -------- */
 [data-testid="stExpander"] summary {{ font-size: 0.86rem; font-weight: 600; }}
 
+/* -------- logos de entidad ejecutora (alto fijado inline por logo_*_html()) -------- */
+.gm-logo-fundacion, .gm-logo-glocalminds {{ display: inline-block; margin: 4px 8px 6px 0; vertical-align: middle; }}
+.gm-logo-fundacion svg {{ height: 100%; width: auto; display: block; }}
+.gm-logo-glocalminds img {{ height: 100%; width: auto; display: block; }}
+
 /* -------- captions -------- */
 [data-testid="stCaptionContainer"] {{ font-size: 0.76rem; }}
 </style>
@@ -389,6 +396,48 @@ def dataframe_full(df, column_config=None, height=None, hide_index=True):
         df, width="stretch", hide_index=hide_index,
         column_config=column_config or {}, height=calc_height,
     )
+
+
+@st.cache_data(show_spinner=False)
+def _fundacion_logo_svg() -> str:
+    if not FUNDACION_LOGO_PATH.exists():
+        return ""
+    return FUNDACION_LOGO_PATH.read_text(encoding="utf-8")
+
+
+@st.cache_data(show_spinner=False)
+def _glocalminds_logo_b64() -> str:
+    import base64
+
+    if not LOGO_PATH.exists():
+        return ""
+    return base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
+
+
+def logo_fundacion_html(height: int = 24) -> str:
+    """Logo de Fundación Glocal, incrustado como SVG inline (no depende del soporte de imagen
+    de Streamlit — cualquier navegador lo renderiza de forma nativa)."""
+    svg = _fundacion_logo_svg()
+    if not svg:
+        return ""
+    return f'<div class="gm-logo-fundacion" style="height:{height}px">{svg}</div>'
+
+
+def logo_glocalminds_html(height: int = 24) -> str:
+    """Logo de Glocalminds (PNG existente), incrustado como data URI."""
+    b64 = _glocalminds_logo_b64()
+    if not b64:
+        return ""
+    return (
+        f'<div class="gm-logo-glocalminds" style="height:{height}px">'
+        f'<img src="data:image/png;base64,{b64}" alt="Glocalminds"></div>'
+    )
+
+
+def entidad_logo_html(es_fundacion: bool, height: int = 24) -> str:
+    """Fundación Glocal -> logo de la fundación; cualquier Consultora (EIRL/SpA/Ltda) -> logo
+    de glocalminds.com. Regla de negocio pedida por el usuario."""
+    return logo_fundacion_html(height) if es_fundacion else logo_glocalminds_html(height)
 
 
 def badge_list(values, outline=False):
