@@ -267,6 +267,14 @@ button[data-baseweb="tab"] {{ padding: 6px 12px !important; }}
 .gm-logo-fundacion svg {{ height: 100%; width: auto; display: block; }}
 .gm-logo-glocalminds img {{ height: 100%; width: auto; display: block; }}
 
+/* -------- ambos logos lado a lado (sidebar e Inicio: Fundación + Consultora usan la app) -------- */
+.gm-dual-logo {{
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; flex-wrap: wrap; padding: 10px 4px 14px 4px;
+}}
+.gm-dual-logo .gm-logo-fundacion, .gm-dual-logo .gm-logo-glocalminds {{ margin: 0; }}
+.gm-dual-logo .gm-logo-sep {{ color: {COLOR_BORDER}; font-size: 1.1em; }}
+
 /* -------- captions -------- */
 [data-testid="stCaptionContainer"] {{ font-size: 0.76rem; }}
 </style>
@@ -274,13 +282,8 @@ button[data-baseweb="tab"] {{ padding: 6px 12px !important; }}
 
 
 def inject():
-    if LOGO_PATH.exists():
-        try:
-            st.logo(str(LOGO_PATH), size="large")
-        except TypeError:
-            st.logo(str(LOGO_PATH))
-        except Exception:
-            pass
+    with st.sidebar:
+        st.markdown(dual_logo_html(height=20, separator=False), unsafe_allow_html=True)
     st.markdown(_CSS, unsafe_allow_html=True)
 
 
@@ -438,6 +441,18 @@ def entidad_logo_html(es_fundacion: bool, height: int = 24) -> str:
     """Fundación Glocal -> logo de la fundación; cualquier Consultora (EIRL/SpA/Ltda) -> logo
     de glocalminds.com. Regla de negocio pedida por el usuario."""
     return logo_fundacion_html(height) if es_fundacion else logo_glocalminds_html(height)
+
+
+def dual_logo_html(height: int = 34, separator: bool = True) -> str:
+    """Ambos logos lado a lado — la herramienta la usa tanto gente de la Fundación como de la
+    Consultora, así que ningún logo queda implícito. Se usa en el header del sidebar (inject())
+    y en Inicio."""
+    fundacion = logo_fundacion_html(height)
+    glocalminds = logo_glocalminds_html(height)
+    if not fundacion or not glocalminds:
+        return fundacion or glocalminds or ""
+    sep = '<span class="gm-logo-sep">|</span>' if separator else ""
+    return f'<div class="gm-dual-logo">{glocalminds}{sep}{fundacion}</div>'
 
 
 def badge_list(values, outline=False):

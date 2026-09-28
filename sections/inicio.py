@@ -5,7 +5,7 @@ import streamlit as st
 
 from utils.data import get_options, load_mapa_ubicaciones
 from utils.filters import entidad_titulo_sufijo, filters_summary_widget, get_filtered_df
-from utils.style import LOGO_PATH, inject, page_header, section_label, style_fig
+from utils.style import dual_logo_html, inject, page_header, section_label, style_fig
 
 
 def render():
@@ -14,10 +14,7 @@ def render():
     with st.sidebar:
         filters_summary_widget()
 
-    if LOGO_PATH.exists():
-        lc1, lc2, lc3 = st.columns([1, 2, 1])
-        with lc2:
-            st.image(str(LOGO_PATH), width=260)
+    st.markdown(dual_logo_html(height=56), unsafe_allow_html=True)
 
     page_header(
         "Explorador Impacto Glocal",
