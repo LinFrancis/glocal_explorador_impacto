@@ -40,6 +40,7 @@ import pandas as pd
 from utils import schema as S
 from utils import storage
 from utils import variables as V
+from utils.clave_pem import normalizar_clave
 from utils.storage import AlmacenBase, ErrorAlmacen, Libro, Respaldo, _migrar
 from utils.validation import a_texto, de_texto
 
@@ -89,8 +90,7 @@ def configuracion() -> dict | None:
         partes = ([f"falta la dirección de la hoja (`spreadsheet`)"] if not hoja else []) + \
                  ([f"faltan los datos de la cuenta de servicio ({', '.join(faltan)})"] if faltan else [])
         raise ErrorAlmacen("La sección [gsheets] de los secretos está incompleta: " + " y ".join(partes) + ".")
-    if "\\n" in str(info["private_key"]) and "\n" not in str(info["private_key"]):
-        info["private_key"] = str(info["private_key"]).replace("\\n", "\n")
+    info["private_key"] = normalizar_clave(info["private_key"])
     info.setdefault("type", "service_account")
     info.setdefault("token_uri", "https://oauth2.googleapis.com/token")
     return {"spreadsheet": hoja, "info": info}
