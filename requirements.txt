@@ -5,3 +5,7 @@ plotly>=7.0
 pydeck>=0.9
 python-docx>=1.1
 rapidfuzz>=3.0
+requests>=2.31
+beautifulsoup4>=4.12
+gspread>=6.0
+google-auth>=2.20

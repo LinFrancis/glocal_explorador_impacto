@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 
+from sections import libro
 from utils.data import FUENTES_REALES_TEXT, get_options, load_noticias
 from utils.style import inject, page_header
 
@@ -18,7 +19,7 @@ page_header(
 
 df = load_noticias()
 
-st.page_link("pages/8_Glosario.py", label="Ver todas las definiciones en el Glosario →")
+st.page_link("app_pages/glosario.py", label="Ver todas las definiciones en el Glosario →")
 
 st.markdown("## Cómo leer cada dimensión")
 st.markdown(
@@ -108,14 +109,20 @@ for titulo, campo, texto in secciones:
 
 st.divider()
 
+st.markdown("## Variables propias del equipo")
+st.markdown(
+    "Además de las dimensiones anteriores, el equipo puede crear sus propias categorías de análisis, cada una con su "
+    "tipo y sus opciones de respuesta (por ejemplo, «Tamaño del proyecto»: pequeño, mediano, grande). Funcionan como una "
+    "columna más de la base y quedan registradas aquí apenas se crean."
+)
+libro.render_variables_propias()
+
+st.divider()
+
 st.markdown("## Fuentes reales citadas")
 st.markdown(FUENTES_REALES_TEXT)
 
 st.divider()
 
 st.markdown("## Libro de códigos")
-st.markdown(
-    "La descripción técnica completa de las 43 columnas de la base de datos — tipo de variable, "
-    "opciones de respuesta y fuente exacta de cada una — vive en la hoja **Libro_de_Codigos** del "
-    "archivo Excel del catálogo (junto a **Base_Datos**, la única hoja con los datos)."
-)
+libro.render_libro_de_codigos()

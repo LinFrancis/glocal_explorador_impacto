@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import streamlit as st
 
 from sections import cruces, cuencas, evolucion, mapa, resultados
+from sections import variables as variables_sec
 from utils.data import load_noticias
 from utils.filters import apply_search_filters, render_search_filters
 from utils.style import inject, page_header
@@ -25,6 +26,7 @@ with st.sidebar:
         "- [Mapa](#mapa)\n"
         "- [Evolución en el tiempo](#evolucion)\n"
         "- [Cruces y correlaciones](#cruces)\n"
+        "- [Variables propias](#variables)\n"
         "- [Cuencas](#cuencas)"
     )
 
@@ -43,7 +45,7 @@ df_dedup = df[~df["es_duplicado_secundario"].astype(bool)] if "es_duplicado_secu
 
 st.markdown('<div id="resultados"></div>', unsafe_allow_html=True)
 with st.expander(f"Resultados ({len(df)})", expanded=False):
-    resultados.render(df)
+    resultados.render(df, df_total, criterios)
 
 st.markdown('<div id="mapa"></div>', unsafe_allow_html=True)
 with st.expander("Mapa", expanded=False):
@@ -56,6 +58,10 @@ with st.expander("Evolución en el Tiempo", expanded=False):
 st.markdown('<div id="cruces"></div>', unsafe_allow_html=True)
 with st.expander("Cruces y Correlaciones", expanded=False):
     cruces.render(df_dedup, criterios)
+
+st.markdown('<div id="variables"></div>', unsafe_allow_html=True)
+with st.expander("Variables propias", expanded=False):
+    variables_sec.render(df_dedup, criterios)
 
 st.markdown('<div id="cuencas"></div>', unsafe_allow_html=True)
 with st.expander("Cuencas", expanded=False):

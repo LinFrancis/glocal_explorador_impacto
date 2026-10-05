@@ -62,7 +62,7 @@ def render(df, criterios=None):
         labels={"n": "N° experiencias", "NOM_CUENCA": "Cuenca"},
     )
     fig.update_layout(coloraxis_showscale=False)
-    style_fig(fig, height=440, title=f"Top 20 cuencas con más experiencias vinculadas{sufijo}", showlegend=False)
+    style_fig(fig, height=440, title=f"Las 20 cuencas con más experiencias vinculadas{sufijo}", showlegend=False)
     st.plotly_chart(fig, width="stretch", key="cuencas_fig_ranking")
 
     st.divider()

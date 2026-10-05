@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
 """Criterios de búsqueda compartidos entre TODAS las vistas de la plataforma.
 
-El Explorador (pages/2_Explorador.py) es quien renderiza los controles (render_search_filters),
+El Explorador (app_pages/explorador.py) es quien renderiza los controles (render_search_filters),
 pero el resultado se guarda en st.session_state para que Mapa, Evolución Temporal, Cruces y
 Correlaciones y Cuencas —y el panorama de Inicio— lo apliquen también, vía get_filtered_df().
 Streamlit comparte st.session_state entre todas las páginas de una misma sesión de navegador,
 así que los criterios elegidos en el Explorador persisten al navegar a cualquier otra página.
 """
+import pandas as pd
 import streamlit as st
 
+from utils import completitud
+from utils import schema as S
+from utils.variables import SIN_DATO
 from utils.data import filter_by_multilabel, get_options, load_noticias, search_tokens
 from utils.style import logo_fundacion_html, logo_glocalminds_html
 
@@ -33,30 +37,74 @@ CRITERIOS_KEY = "criterios_busqueda"
 PERSONALIDAD_OPCIONES = ["Fundación Glocal", "Consultora EIRL", "Consultora SpA", "Consultora Ltda"]
 
 
+# Claves de los widgets del panel de filtros. Los criterios guardados (CRITERIOS_KEY) son la fuente
+# de verdad: al volver al Explorador desde otra página los widgets se re-inicializan desde ellos, y
+# "Limpiar filtros" borra criterios y widgets a la vez.
+K_TEXTO, K_FUZZY, K_FUENTE, K_TIPO, K_PERSONALIDAD = "f_texto", "filtro_fuzzy_umbral", "f_fuente", "f_tipo", "f_personalidad"
+K_MACRO, K_CAT, K_METO, K_ACTOR = "f_macro", "f_cat", "f_meto", "f_actor"
+K_EJE, K_OBJ, K_RESIL, K_SUBRESIL = "f_eje", "f_obj", "f_resil", "f_subresil"
+K_BENEF_DIR, K_BENEF_IND, K_GENERO = "f_benef_dir", "f_benef_ind", "f_genero"
+K_ANIOS, K_SIN_FECHA, K_COMPLETITUD = "f_anios", "f_sin_fecha", "f_completitud"
+PREFIJO_VAR = "f_var_"                      # widgets de las variables propias: f_var_<clave>
+_WIDGET_KEYS = (
+    K_TEXTO, K_FUZZY, K_FUENTE, K_TIPO, K_PERSONALIDAD, K_MACRO, K_CAT, K_METO, K_ACTOR, K_EJE, K_OBJ,
+    K_RESIL, K_SUBRESIL, K_BENEF_DIR, K_BENEF_IND, K_GENERO, K_ANIOS, K_SIN_FECHA, K_COMPLETITUD,
+)
+
+
+def limpiar_filtros() -> None:
+    """Borra los criterios y el estado de todos los widgets. Úsalo como `on_click` (se ejecuta antes
+    de que los widgets se vuelvan a dibujar, por eso puede modificar su estado)."""
+    st.session_state.pop(CRITERIOS_KEY, None)
+    for k in _WIDGET_KEYS:
+        st.session_state.pop(k, None)
+    for k in [k for k in st.session_state if str(k).startswith(PREFIJO_VAR)]:
+        st.session_state.pop(k, None)
+
+
+def _sembrar(key: str, valor, opciones=None) -> None:
+    """Si el widget no tiene estado (primera vez o volvió de otra página), parte del criterio guardado."""
+    if key in st.session_state:
+        return
+    if opciones is not None:
+        st.session_state[key] = [v for v in (valor or []) if v in opciones]
+    elif valor is not None:
+        st.session_state[key] = valor
+
+
+def _multi(etiqueta: str, key: str, opciones: list[str], guardados: dict, criterio: str) -> list[str]:
+    _sembrar(key, guardados.get(criterio), opciones)
+    return st.multiselect(etiqueta, opciones, key=key)
+
+
 def render_search_filters(df) -> dict:
     """Sidebar de criterios de búsqueda. Se usa SOLO en el Explorador; el resultado queda
     guardado en session_state para que el resto de las páginas lo consuman con get_filtered_df().
     """
     actores_col = "actores_normalizados" if "actores_normalizados" in df.columns else "actores"
+    g = st.session_state.get(CRITERIOS_KEY) or {}
 
     st.markdown("**Criterios de búsqueda**")
-    st.page_link("pages/8_Glosario.py", label="¿Qué significa cada categoría? → Glosario")
+    st.page_link("app_pages/glosario.py", label="¿Qué significa cada categoría? → Glosario")
 
-    texto = st.text_input("Buscar texto en título o contenido")
+    _sembrar(K_TEXTO, g.get("texto"))
+    texto = st.text_input("Buscar texto en título o contenido", key=K_TEXTO)
+    _sembrar(K_FUZZY, g.get("fuzzy_umbral"))
     f_fuzzy = st.slider(
         "Nivel de coincidencia del buscador", min_value=50, max_value=100, value=100, step=5,
-        format="%d%%", key="filtro_fuzzy_umbral",
+        format="%d%%", key=K_FUZZY,
         help="100% = coincidencia exacta/literal. Bajar el porcentaje encuentra resultados "
              "aunque falte una tilde, haya un error de tipeo o solo una parte de la palabra "
              "coincida (p. ej. 'plan' con umbral bajo encuentra 'planificación').",
     )
 
-    f_fuente = st.multiselect("Fuente", get_options(df, "fuente")) if "fuente" in df.columns else []
-    f_tipo_info = st.multiselect("Tipo de información", get_options(df, "tipo_informacion")) if "tipo_informacion" in df.columns else []
+    f_fuente = _multi("Fuente", K_FUENTE, get_options(df, "fuente"), g, "fuente") if "fuente" in df.columns else []
+    f_tipo_info = (_multi("Tipo de información", K_TIPO, get_options(df, "tipo_informacion"), g, "tipo_informacion")
+                   if "tipo_informacion" in df.columns else [])
 
     f_personalidad = []
     if "Fundación Glocal?" in df.columns or "Consultora" in df.columns:
-        f_personalidad = st.multiselect("Personalidad jurídica ejecutora", PERSONALIDAD_OPCIONES)
+        f_personalidad = _multi("Personalidad jurídica ejecutora", K_PERSONALIDAD, PERSONALIDAD_OPCIONES, g, "personalidad_juridica")
         sufijo_preview = entidad_titulo_sufijo({"personalidad_juridica": f_personalidad})
         if sufijo_preview:
             logos_html = ""
@@ -67,30 +115,66 @@ def render_search_filters(df) -> dict:
             if logos_html:
                 st.markdown(logos_html, unsafe_allow_html=True)
 
-    st.divider()
-    f_macro = st.multiselect("Categoría macro", get_options(df, "categoria_macro"))
-    f_cat = st.multiselect("Categoría temática", get_options(df, "categorias"))
-    f_meto = st.multiselect("Metodología", get_options(df, "metodologia"))
-    f_actor = st.multiselect("Actores institucionales", get_options(df, actores_col))
+    f_completitud = _multi("Nivel de completitud", K_COMPLETITUD, list(completitud.NIVELES), g, "completitud")
+
+    # ---- variables propias (categorías analíticas creadas por el equipo)
+    f_variables: dict = {}
+    propias = [c for c in S.variables_activas() if c.key in df.columns]
+    if propias:
+        st.divider()
+        st.markdown("**Variables propias**")
+        guardadas = g.get("variables") or {}
+        for c in propias:
+            key = PREFIJO_VAR + c.key
+            if isinstance(c.opciones, tuple):                     # opción única / múltiple / Sí-No: lista de opciones
+                opciones_v = list(c.opciones) + [SIN_DATO]
+                _sembrar(key, guardadas.get(c.key), opciones_v)
+                f_variables[c.key] = st.multiselect(c.label, opciones_v, key=key)
+            elif c.tipo == S.NUMERO:
+                nums = pd.to_numeric(df[c.key].astype(str).str.replace(",", "."), errors="coerce").dropna()
+                if nums.empty or nums.min() == nums.max():
+                    continue
+                lo, hi = float(nums.min()), float(nums.max())
+                previo = guardadas.get(c.key)
+                if previo and key not in st.session_state:
+                    st.session_state[key] = (max(lo, float(previo[0])), min(hi, float(previo[1])))
+                rango = st.slider(c.label, lo, hi, (lo, hi), key=key)
+                f_variables[c.key] = list(rango) if rango != (lo, hi) else None
+            elif c.tipo in (S.TEXTO, S.TEXTO_LARGO, S.URL):
+                _sembrar(key, guardadas.get(c.key))
+                f_variables[c.key] = st.text_input(f"{c.label} (contiene)", key=key)
+        f_variables = {k: v for k, v in f_variables.items() if v}
 
     st.divider()
-    f_gcaa_eje = st.multiselect("Eje GCAA", get_options(df, "eje_gcaa"))
-    f_gcaa_obj = st.multiselect("Objetivo GCAA", get_options(df, "objetivo_gcaa"))
-    f_resil = st.multiselect("Atributo de resiliencia", get_options(df, "atributos_resiliencia"))
-    f_subresil = st.multiselect("Sub-atributo de resiliencia", get_options(df, "subatributos_resiliencia"))
+    f_macro = _multi("Categoría macro", K_MACRO, get_options(df, "categoria_macro"), g, "categoria_macro")
+    f_cat = _multi("Categoría temática", K_CAT, get_options(df, "categorias"), g, "categorias")
+    f_meto = _multi("Metodología", K_METO, get_options(df, "metodologia"), g, "metodologia")
+    f_actor = _multi("Actores institucionales", K_ACTOR, get_options(df, actores_col), g, "actores")
 
     st.divider()
-    f_benef_dir = st.multiselect("Beneficiarios directos", get_options(df, "beneficiarios_directos"))
-    f_benef_ind = st.multiselect("Beneficiarios indirectos", get_options(df, "beneficiarios_indirectos"))
-    f_genero = st.radio("Enfoque de género", ["Todos", "Solo con enfoque explícito", "Sin enfoque"], index=0)
+    f_gcaa_eje = _multi("Eje GCAA", K_EJE, get_options(df, "eje_gcaa"), g, "eje_gcaa")
+    f_gcaa_obj = _multi("Objetivo GCAA", K_OBJ, get_options(df, "objetivo_gcaa"), g, "objetivo_gcaa")
+    f_resil = _multi("Atributo de resiliencia", K_RESIL, get_options(df, "atributos_resiliencia"), g, "atributos_resiliencia")
+    f_subresil = _multi("Sub-atributo de resiliencia", K_SUBRESIL, get_options(df, "subatributos_resiliencia"), g, "subatributos_resiliencia")
+
+    st.divider()
+    f_benef_dir = _multi("Beneficiarios directos", K_BENEF_DIR, get_options(df, "beneficiarios_directos"), g, "beneficiarios_directos")
+    f_benef_ind = _multi("Beneficiarios indirectos", K_BENEF_IND, get_options(df, "beneficiarios_indirectos"), g, "beneficiarios_indirectos")
+    opciones_genero = ["Todos", "Solo con enfoque explícito", "Sin enfoque"]
+    _sembrar(K_GENERO, g.get("genero") if g.get("genero") in opciones_genero else None)
+    f_genero = st.radio("Enfoque de género", opciones_genero, key=K_GENERO)
 
     st.divider()
     f_anios = None
     f_incluir_sin_fecha = True
     if df["tiene_fecha"].any():
         anio_min, anio_max = int(df["anio"].min()), int(df["anio"].max())
-        rango_sel = st.slider("Año", anio_min, anio_max, (anio_min, anio_max))
-        f_incluir_sin_fecha = st.checkbox("Incluir experiencias sin fecha registrada", value=True)
+        previo = g.get("anios")
+        if previo is not None and K_ANIOS not in st.session_state:
+            st.session_state[K_ANIOS] = (max(anio_min, previo[0]), min(anio_max, previo[1]))
+        rango_sel = st.slider("Año", anio_min, anio_max, (anio_min, anio_max), key=K_ANIOS)
+        _sembrar(K_SIN_FECHA, g.get("incluir_sin_fecha"))
+        f_incluir_sin_fecha = st.checkbox("Incluir experiencias sin fecha registrada", value=True, key=K_SIN_FECHA)
         # Solo cuenta como "criterio activo" si de verdad recorta el rango completo del catálogo.
         if rango_sel != (anio_min, anio_max) or not f_incluir_sin_fecha:
             f_anios = rango_sel
@@ -101,6 +185,8 @@ def render_search_filters(df) -> dict:
         "fuente": f_fuente,
         "tipo_informacion": f_tipo_info,
         "personalidad_juridica": f_personalidad,
+        "completitud": f_completitud,
+        "variables": f_variables,
         "categoria_macro": f_macro,
         "categorias": f_cat,
         "metodologia": f_meto,
@@ -117,9 +203,7 @@ def render_search_filters(df) -> dict:
     }
     st.session_state[CRITERIOS_KEY] = criterios
 
-    if st.button("Limpiar filtros"):
-        st.session_state.pop(CRITERIOS_KEY, None)
-        st.rerun()
+    st.button("Limpiar filtros", on_click=limpiar_filtros, key="limpiar_filtros_explorador", icon=":material/filter_alt_off:")
 
     return criterios
 
@@ -131,12 +215,13 @@ def _n_criterios_activos(criterios: dict) -> int:
     if criterios.get("texto"):
         n += 1
     for key in (
-        "fuente", "tipo_informacion", "personalidad_juridica", "categoria_macro", "categorias",
+        "fuente", "tipo_informacion", "personalidad_juridica", "completitud", "categoria_macro", "categorias",
         "metodologia", "actores", "eje_gcaa", "objetivo_gcaa", "atributos_resiliencia",
         "subatributos_resiliencia", "beneficiarios_directos", "beneficiarios_indirectos",
     ):
         if criterios.get(key):
             n += 1
+    n += len(criterios.get("variables") or {})
     if criterios.get("genero") not in (None, "Todos"):
         n += 1
     if criterios.get("anios") is not None:
@@ -222,6 +307,29 @@ def apply_search_filters(df, criterios: dict):
             mask = mask | result["Consultora"].astype(str).isin(consultora_tipos)
         result = result[mask]
 
+    niveles = criterios.get("completitud")
+    if niveles and "completitud" in result.columns:
+        result = result[completitud.nivel_df(result["completitud"]).isin(niveles)]
+
+    for clave, valor in (criterios.get("variables") or {}).items():
+        campo = S.CAMPO.get(clave)
+        if not valor or campo is None or clave not in result.columns:
+            continue
+        col = result[clave].fillna("").astype(str)
+        if isinstance(campo.opciones, tuple):                          # lista de opciones: cualquiera de las elegidas
+            elegidas = set(valor)
+            con_vacio = SIN_DATO in elegidas
+
+            def _coincide(celda, elegidas=elegidas, con_vacio=con_vacio):
+                partes = S.dividir_etiquetas(celda)
+                return (not partes and con_vacio) or any(p in elegidas for p in partes)
+            result = result[col.map(_coincide)]
+        elif campo.tipo == S.NUMERO:                                   # rango [mín, máx]
+            nums = pd.to_numeric(col.str.replace(",", "."), errors="coerce")
+            result = result[nums.between(float(valor[0]), float(valor[1]))]
+        else:                                                           # texto: contiene
+            result = result[col.str.lower().str.contains(str(valor).strip().lower(), regex=False)]
+
     result = filter_by_multilabel(result, "categoria_macro", criterios.get("categoria_macro"))
     result = filter_by_multilabel(result, "categorias", criterios.get("categorias"))
     result = filter_by_multilabel(result, "metodologia", criterios.get("metodologia"))
@@ -270,10 +378,8 @@ def filters_summary_widget():
     n = _n_criterios_activos(criterios)
     if n:
         st.caption(f"{n} criterio(s) de búsqueda activo(s) (definidos en el Explorador).")
-        if st.button("Quitar todos los filtros", key="quitar_filtros_global"):
-            st.session_state.pop(CRITERIOS_KEY, None)
-            st.rerun()
+        st.button("Quitar todos los filtros", key="quitar_filtros_global", on_click=limpiar_filtros)
     else:
         st.caption("Sin filtros — viendo todo el catálogo.")
-    st.page_link("pages/2_Explorador.py", label="Editar criterios de búsqueda →")
+    st.page_link("app_pages/explorador.py", label="Editar criterios de búsqueda →")
     st.divider()

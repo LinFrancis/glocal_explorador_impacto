@@ -7,11 +7,12 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-EXCEL_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "data"
-    / "experiencia_glocal_catálogo_web_histórico_hasta_10_Agosto_2026.xlsx"
-)
+from utils import completitud, schema, storage
+from utils.validation import a_texto
+
+# Libro de trabajo (copia gestionable del Excel original; ver utils/storage.py). El Excel
+# original queda en data/ como semilla de solo lectura.
+EXCEL_PATH = storage.RUTA_TRABAJO
 CUENCAS_REF_PATH = Path(__file__).resolve().parent.parent / "data" / "cuencas_chile_bna.xlsx"
 
 FUENTES_REALES_TEXT = """\
@@ -37,8 +38,8 @@ sobre la Agenda de Acción. https://www.climatechampions.net/our-work/action-age
 Resilience Campaign". Documento oficial con la definición de los 7 atributos de resiliencia \
 y sus 19 sub-atributos. https://drive.google.com/file/d/1M_1xSqTGVwwn4jfiV4Cg9EFSccys1MBR/view
 
-Los 7 atributos: Preparedness and planning · Learning · Agency · Social Collaboration · \
-Flexibility · Equity · Assets.
+Los 7 atributos: Preparación y planificación · Aprendizaje · Agencia · Colaboración social · \
+Flexibilidad · Equidad · Activos.
 
 ## Nota sobre las demás columnas
 
@@ -54,14 +55,9 @@ MESES = {
 }
 _DATE_RE = re.compile(r"(\d{1,2})\s+de\s+(\w+)\s+de\s+(\d{4})", re.IGNORECASE)
 
-# Variantes detectadas del mismo método, escritas distinto por distintos lotes de codificación.
-_METODOLOGIA_ALIASES = {
-    "otra: café pro-acción": "Otra: Café ProAcción",
-    "otra: café proacción": "Otra: Café ProAcción",
-    "otra: café pro acción": "Otra: Café ProAcción",
-    "otra: diseño de acción sabia": "Otra: Diseño para la Acción Sabia",
-    "otra: tres horizontes": "Otra: Marco de los Tres Horizontes",
-}
+# Variantes detectadas del mismo método, escritas distinto por distintos lotes de codificación
+# (la definición vive en utils/schema.py para que el libro de códigos use la misma regla).
+_METODOLOGIA_ALIASES = schema.ALIAS_METODOLOGIA
 
 MULTILABEL_COLS = [
     "categorias", "categoria_macro", "metodologia", "actores", "actores_normalizados",
@@ -380,10 +376,109 @@ def _normalize_multilabel_text(value):
     return "; ".join(parts)
 
 
-@st.cache_data(show_spinner="Cargando catálogo de experiencias...")
+def almacen_actual() -> storage.LocalStorage:
+    """Almacén del libro de trabajo, ya creado y migrado."""
+    return storage.get_storage()
+
+
 def load_noticias() -> pd.DataFrame:
-    df = pd.read_excel(EXCEL_PATH, sheet_name="Base_Datos", engine="openpyxl")
+    """Catálogo para las pantallas de LECTURA (Explorador, mapas, gráficos, Inicio).
+
+    Es una vista transformada (espacios corregidos, alias de metodología, columnas derivadas); las
+    pantallas que ESCRIBEN deben usar `leer_base_cruda()` para no guardar el texto ya retocado.
+    Se recarga sola cada vez que cambia el archivo de trabajo.
+    """
+    return _load_noticias(almacen_actual().firma())
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _leer_hoja(nombre: str, firma: str) -> pd.DataFrame:
+    return almacen_actual().leer_hoja_texto(nombre)
+
+
+@st.cache_data(show_spinner=False, max_entries=4)
+def _leer_base_cruda(firma: str) -> pd.DataFrame:
+    return almacen_actual().leer_base_texto()
+
+
+def leer_hoja(nombre: str) -> pd.DataFrame:
+    """Hoja auxiliar (Historial, Notas, Categorias...) en texto canónico, cacheada por firma."""
+    return _leer_hoja(nombre, almacen_actual().firma())
+
+
+def leer_base_cruda() -> pd.DataFrame:
+    """Base_Datos tal como está guardada (todo texto canónico, todas las columnas del esquema)."""
+    return _leer_base_cruda(almacen_actual().firma())
+
+
+def catalogo_categorias() -> dict[str, list[str]]:
+    """Categorías activas por dimensión (categoria_macro, categorias), del catálogo de Administración."""
+    from utils import repo
+    return repo.catalogo_desde_df(leer_hoja(schema.HOJA_CATEGORIAS))
+
+
+def variables_propias() -> list[schema.Campo]:
+    """Variables propias activas (campos del esquema). Lee la base antes: eso las registra en el esquema."""
+    leer_base_cruda()
+    return schema.variables_activas()
+
+
+def libro_de_codigos() -> pd.DataFrame:
+    """Hoja Libro_de_Codigos (columna, descripcion, tipo_variable, opciones_respuesta, fuente) en texto."""
+    return leer_hoja(schema.HOJA_LIBRO)
+
+
+def _opciones_listadas(texto: str) -> list[str]:
+    """Opciones escritas en el libro como «A / B / C» (p. ej. los tipos de información). [] si no es una lista simple."""
+    partes = [p.strip() for p in str(texto).split(" / ")]
+    if len(partes) < 3 or any(not p or p[0] in "'<" or len(p) > 80 for p in partes):
+        return []
+    return partes
+
+
+def opciones_de_campos() -> dict[str, list[str]]:
+    """Opciones de cada campo con opciones (para formularios y editores).
+
+    Las de opción única que salen de los datos se completan con las que lista el libro de códigos, así una
+    opción oficial sin uso todavía también se puede elegir.
+    """
+    base = leer_base_cruda()
+    cat = catalogo_categorias()
+    hoja = libro_de_codigos()
+    libro = dict(zip(hoja["columna"], hoja["opciones_respuesta"])) if len(hoja) else {}
+    opciones = {
+        c.key: schema.opciones_de(c.key, base[c.key] if c.key in base.columns else None, cat)
+        for c in schema.CAMPOS if c.opciones is not None
+    }
+    for c in schema.CAMPOS:
+        if c.tipo == schema.OPCION and c.opciones == schema.OPC_DATOS and not c.variable:
+            for o in _opciones_listadas(libro.get(c.key, "")):
+                if o not in opciones[c.key]:
+                    opciones[c.key].append(o)
+    return opciones
+
+
+# Columnas de texto que en una noticia recién cargada pueden venir vacías (NaN) y no deben romper
+# filtros ni ordenamientos.
+_COLS_TEXTO_SIN_NULOS = (
+    "tipo_informacion", "fuente", "enfoque_genero", "sitios_lat", "sitios_lon", "sitios_pais",
+    "sitios_cuenca_nombre", "sitios_precision_geocodificacion",
+)
+
+
+@st.cache_data(show_spinner="Cargando catálogo de experiencias...", max_entries=3)
+def _load_noticias(firma: str) -> pd.DataFrame:   # `firma` NO lleva guion bajo: es la clave de caché
+    df = almacen_actual().leer_base_excel()
     df = df.dropna(subset=["titulo"]).reset_index(drop=True)
+    for col in _COLS_TEXTO_SIN_NULOS:
+        if col in df.columns:
+            df[col] = df[col].fillna("").astype(str)
+    # Carpeta/documentos del proyecto y variables propias: siempre presentes, en texto y sin NaN
+    for c in schema.CAMPOS:
+        if c.variable or c.key in ("carpeta_proyecto", "documentos_proyecto"):
+            if c.key not in df.columns:
+                df[c.key] = ""
+            df[c.key] = df[c.key].map(lambda v, t=c.tipo: a_texto(v, t))
     df.insert(0, "item", range(1, len(df) + 1))
 
     # "Fundación Glocal?" / "Consultora" vienen del Excel con un mix de 0 (numérico) y texto
@@ -443,6 +538,9 @@ def load_noticias() -> pd.DataFrame:
     texto_busqueda = df["titulo"].fillna("") + " " + df["contenido_completo"].fillna("")
     df["_palabras_busqueda"] = texto_busqueda.apply(lambda t: tuple(sorted(set(search_tokens(t)))))
 
+    # % de campos clave con información (utils/completitud.py), para filtros, tablas y el dashboard.
+    df["completitud"] = completitud.pct_df(df)
+
     return df
 
 
@@ -469,12 +567,17 @@ def _split_parallel(value) -> list[str]:
     return [p.strip() for p in value.split(";")]
 
 
-@st.cache_data(show_spinner=False)
 def load_mapa_ubicaciones() -> pd.DataFrame:
+    """Tabla larga (1 fila por sitio geográfico); se recalcula cuando cambia el archivo de trabajo."""
+    return _load_mapa_ubicaciones(almacen_actual().firma())
+
+
+@st.cache_data(show_spinner=False, max_entries=3)
+def _load_mapa_ubicaciones(firma: str) -> pd.DataFrame:
     """Reconstruye la tabla larga (1 fila por sitio geográfico) a partir de las columnas
     paralelas lugar / sitios_lat / sitios_lon / sitios_pais / sitios_cuenca_nombre de
     Base_Datos. No se guarda una hoja aparte: la base de datos es una sola hoja, esta
-    tabla se arma en memoria cada vez que se carga la app."""
+    tabla se arma en memoria cada vez que cambia el archivo."""
     df = load_noticias()
     rows = []
     for _, row in df.iterrows():
@@ -588,6 +691,16 @@ def extract_country(display_name: str) -> str | None:
 
 
 _MESES_INV = {v: k for k, v in MESES.items()}
+
+
+_MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def fecha_corta_es(ts) -> str:
+    """'12 jul 2026': meses abreviados en español, sin depender del idioma del sistema."""
+    if ts is None or (hasattr(ts, "year") is False) or pd.isna(ts):
+        return "s/f"
+    return f"{ts.day} {_MESES_CORTOS[ts.month - 1]} {ts.year}"
 
 
 def format_fecha_es(ts) -> str:

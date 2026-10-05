@@ -6,6 +6,7 @@ import streamlit as st
 
 from utils.components import render_news_card
 from utils.data import (
+    fecha_corta_es,
     cap_categories,
     classification_options,
     dimension_order,
@@ -98,7 +99,7 @@ def render(df, criterios=None):
 
     # ==================================================================== ANIMACIONES
     section_label("Avance dinámico por categoría")
-    st.caption("Presiona Play para ver cómo creció cada categoría macro, año a año.")
+    st.caption("Presiona «Reproducir» para ver cómo creció cada categoría macro, año a año.")
 
     exploded_macro = con_fecha.assign(
         categoria_macro=con_fecha["categoria_macro"].str.split(";")
@@ -137,7 +138,7 @@ def render(df, criterios=None):
     st.caption("Cada barra muestra el total acumulado de experiencias de esa categoría hasta el año seleccionado.")
 
     section_label("Avance dinámico por zona geográfica")
-    st.caption("Presiona Play para ver cómo se expandió el catálogo en el mapa, año a año.")
+    st.caption("Presiona «Reproducir» para ver cómo se expandió el catálogo en el mapa, año a año.")
 
     mapa = load_mapa_ubicaciones()
     mapa = mapa[mapa["item"].isin(df["item"]) & mapa["lat"].notna()].copy()
@@ -203,12 +204,13 @@ def render(df, criterios=None):
     swim_df = con_fecha.assign(**{carril_col: capped_carril})
     color_map_carril = DIMENSION_COLOR_MAPS.get(carril_col) or build_color_map(carril_order)
 
+    swim_df = swim_df.assign(fecha_txt=swim_df["fecha_parsed"].map(fecha_corta_es))   # meses en español
     fig_swim = px.scatter(
         swim_df, x="fecha_parsed", y=carril_col, color=carril_col,
         category_orders={carril_col: carril_order}, color_discrete_map=color_map_carril,
         hover_name="titulo",
-        hover_data={"fecha_parsed": "|%d %b %Y", carril_col: False},
-        labels={"fecha_parsed": "Fecha", carril_col: carril_label},
+        hover_data={"fecha_txt": True, "fecha_parsed": False, carril_col: False},
+        labels={"fecha_parsed": "Fecha", "fecha_txt": "Fecha", carril_col: carril_label},
     )
     fig_swim.update_traces(marker=dict(size=9, line=dict(width=1, color="#FFFFFF")))
     fig_swim.update_yaxes(title=None, categoryorder="array", categoryarray=carril_order)
@@ -229,7 +231,7 @@ def render(df, criterios=None):
         with st.container(border=True):
             cA, cB, cC = st.columns([1, 4, 1])
             with cA:
-                st.markdown(f"**{row['fecha_parsed'].strftime('%d %b %Y')}**")
+                st.markdown(f"**{fecha_corta_es(row['fecha_parsed'])}**")
             with cB:
                 st.markdown(f"**{row['titulo']}**")
                 tags = [row["categoria_macro_primary"]]

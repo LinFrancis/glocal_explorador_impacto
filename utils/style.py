@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """Sistema de diseño v2: tipografía proporcional, spacing compacto, componentes reutilizables."""
 import math
+from html import escape
 from pathlib import Path
 
 import streamlit as st
+
+from utils.ui import mostrar_flash
 
 FONT_FAMILY = "'Montserrat', -apple-system, 'Segoe UI', sans-serif"
 
@@ -133,6 +136,10 @@ p {{ margin-bottom: 0.4rem; }}
     color: {COLOR_TEXT};
 }}
 [data-testid="stMetricDelta"] {{ font-size: 0.72rem; }}
+/* En anchos reducidos las etiquetas y valores largos se parten en vez de cortarse con "…" */
+[data-testid="stMetricLabel"] *, [data-testid="stMetricValue"] * {{
+    white-space: normal !important; overflow: visible !important; text-overflow: clip !important;
+}}
 
 /* -------- header banner -------- */
 .gm-header {{
@@ -277,13 +284,50 @@ button[data-baseweb="tab"] {{ padding: 6px 12px !important; }}
 
 /* -------- captions -------- */
 [data-testid="stCaptionContainer"] {{ font-size: 0.76rem; }}
+
+/* -------- logo de Fundación según el fondo: el SVG original es crema (pensado para fondo oscuro);
+   sobre fondo claro se recolorea al verde de marca para que se vea -------- */
+.gm-sobre-claro svg path {{ fill: {COLOR_PRIMARY_DARK} !important; }}
+
+/* -------- login -------- */
+.gm-login-brand {{
+    text-align: center;
+    padding: 26px 20px 22px 20px;
+    margin: 6vh 0 14px 0;
+    border-radius: 14px;
+    background: linear-gradient(120deg, {COLOR_PRIMARY_DARK} 0%, {COLOR_PRIMARY} 100%);
+    box-shadow: 0 6px 20px rgba(8, 64, 47, 0.18);
+}}
+.gm-login-brand .gm-dual-logo {{ padding: 0 0 14px 0; }}
+.gm-login-brand .gm-eyebrow {{
+    color: rgba(255,255,255,0.72); font-size: 0.70rem; font-weight: 600;
+    letter-spacing: 0.09em; text-transform: uppercase; margin: 4px 0 2px 0;
+}}
+.gm-login-brand h1 {{ color: #FFFFFF !important; margin: 0 0 6px 0 !important; font-size: 1.6rem !important; }}
+.gm-login-brand p {{ color: rgba(255,255,255,0.88); margin: 0; font-size: 0.85rem; line-height: 1.4; }}
+
+/* -------- móvil -------- */
+@media (max-width: 768px) {{
+    .block-container {{ padding: 1rem 0.85rem 2rem 0.85rem !important; }}
+    .gm-header {{ padding: 12px 14px; }}
+    .gm-header h1 {{ font-size: 1.1rem !important; }}
+    .gm-header p {{ font-size: 0.8rem; }}
+    .gm-login-brand {{ margin-top: 2vh; padding: 20px 14px 18px 14px; }}
+    .gm-login-brand h1 {{ font-size: 1.35rem !important; }}
+    .gm-dual-logo {{ gap: 6px; }}
+    [data-testid="stMetricValue"] {{ font-size: 1.2rem !important; }}
+    [data-testid="stMetric"] {{ padding: 8px 10px 6px 10px; }}
+    button[data-baseweb="tab"] {{ padding: 6px 8px !important; }}
+    .gm-hero-img {{ max-height: 220px; }}
+}}
 </style>
 """
 
 
-def inject():
-    with st.sidebar:
-        st.markdown(dual_logo_html(height=20, separator=False), unsafe_allow_html=True)
+def inject(sidebar_logos: bool = True):
+    if sidebar_logos:
+        with st.sidebar:
+            st.markdown(dual_logo_html(height=20, separator=False), unsafe_allow_html=True)
     st.markdown(_CSS, unsafe_allow_html=True)
 
 
@@ -298,6 +342,7 @@ def page_header(eyebrow: str, title: str, subtitle: str = ""):
         """,
         unsafe_allow_html=True,
     )
+    mostrar_flash()
 
 
 def section_label(text: str):
@@ -417,13 +462,15 @@ def _glocalminds_logo_b64() -> str:
     return base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
 
 
-def logo_fundacion_html(height: int = 24) -> str:
+def logo_fundacion_html(height: int = 24, sobre: str = "claro") -> str:
     """Logo de Fundación Glocal, incrustado como SVG inline (no depende del soporte de imagen
-    de Streamlit — cualquier navegador lo renderiza de forma nativa)."""
+    de Streamlit — cualquier navegador lo renderiza de forma nativa).
+
+    sobre: "claro" (fondo claro: se recolorea a verde oscuro) u "oscuro" (conserva el crema original)."""
     svg = _fundacion_logo_svg()
     if not svg:
         return ""
-    return f'<div class="gm-logo-fundacion" style="height:{height}px">{svg}</div>'
+    return f'<div class="gm-logo-fundacion gm-sobre-{sobre}" style="height:{height}px">{svg}</div>'
 
 
 def logo_glocalminds_html(height: int = 24) -> str:
@@ -437,17 +484,17 @@ def logo_glocalminds_html(height: int = 24) -> str:
     )
 
 
-def entidad_logo_html(es_fundacion: bool, height: int = 24) -> str:
+def entidad_logo_html(es_fundacion: bool, height: int = 24, sobre: str = "claro") -> str:
     """Fundación Glocal -> logo de la fundación; cualquier Consultora (EIRL/SpA/Ltda) -> logo
     de glocalminds.com. Regla de negocio pedida por el usuario."""
-    return logo_fundacion_html(height) if es_fundacion else logo_glocalminds_html(height)
+    return logo_fundacion_html(height, sobre) if es_fundacion else logo_glocalminds_html(height)
 
 
-def dual_logo_html(height: int = 34, separator: bool = True) -> str:
+def dual_logo_html(height: int = 34, separator: bool = True, sobre: str = "claro") -> str:
     """Ambos logos lado a lado — la herramienta la usa tanto gente de la Fundación como de la
-    Consultora, así que ningún logo queda implícito. Se usa en el header del sidebar (inject())
-    y en Inicio."""
-    fundacion = logo_fundacion_html(height)
+    Consultora, así que ningún logo queda implícito. Se usa en el header del sidebar (inject()),
+    en Inicio y en el login (sobre="oscuro", sobre la banda verde)."""
+    fundacion = logo_fundacion_html(height, sobre)
     glocalminds = logo_glocalminds_html(height)
     if not fundacion or not glocalminds:
         return fundacion or glocalminds or ""
@@ -457,5 +504,5 @@ def dual_logo_html(height: int = 34, separator: bool = True) -> str:
 
 def badge_list(values, outline=False):
     cls = "gm-badge-outline" if outline else "gm-badge"
-    spans = "".join(f'<span class="{cls}">{v}</span>' for v in values if v)
+    spans = "".join(f'<span class="{cls}">{escape(str(v))}</span>' for v in values if v)
     st.markdown(f'<div>{spans}</div>', unsafe_allow_html=True)

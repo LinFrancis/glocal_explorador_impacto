@@ -29,8 +29,8 @@ def render(df, criterios=None):
     ]
     DIMS = [d for d in DIMS if d in df.columns]
 
-    # ============================================================== 1. Heatmap cruzado
-    st.markdown("## Heatmap cruzado")
+    # ============================================================== 1. Mapa de calor cruzado
+    st.markdown("## Mapa de calor cruzado")
     c1, c2, c3 = st.columns([1, 1, 1])
     dim_a = c1.selectbox("Dimensión A (filas)", DIMS, index=0, format_func=lambda c: COLUMN_LABELS.get(c, c), key="cruces_dim_a")
     dim_b = c2.selectbox("Dimensión B (columnas)", DIMS, index=4, format_func=lambda c: COLUMN_LABELS.get(c, c), key="cruces_dim_b")

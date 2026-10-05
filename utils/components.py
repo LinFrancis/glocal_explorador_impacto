@@ -1,13 +1,53 @@
 # -*- coding: utf-8 -*-
-"""Componentes compuestos reutilizables: ficha de noticia, badges, listas de enlaces."""
-import re
+"""Componentes compuestos reutilizables: ficha de noticia, badges, indicador de completitud.
 
+Todo texto de los datos que se interpola en HTML pasa por `html.escape`: los datos son editables
+por el equipo y se descargan de sitios externos, así que no se pueden tratar como confiables.
+"""
+import re
+from html import escape
+
+import altair as alt
 import pandas as pd
 import requests
 import streamlit as st
 
+from utils import completitud as comp
+from utils import schema as S
 from utils.data import format_fecha_es
-from utils.style import entidad_logo_html
+from utils.style import COLOR_MUTED, COLOR_PRIMARY, entidad_logo_html
+
+COLOR_NIVEL = {comp.NIVEL_COMPLETA: COLOR_PRIMARY, comp.NIVEL_PARCIAL: "#B2531F", comp.NIVEL_BASICA: "#B01E4B"}
+
+
+def completitud_donut(pct: float, nivel: str, tamano: int = 120):
+    """Dona minimalista (sin ejes ni leyenda) con el % en el centro, coloreada según el nivel."""
+    datos = pd.DataFrame({"parte": ["completo", "falta"], "valor": [pct, max(0.0, 100.0 - pct)]})
+    color = COLOR_NIVEL.get(nivel, COLOR_PRIMARY)
+    arco = alt.Chart(datos).mark_arc(innerRadius=tamano * 0.34, outerRadius=tamano * 0.5, cornerRadius=3).encode(
+        theta=alt.Theta("valor:Q", stack=True),
+        color=alt.Color("parte:N", legend=None, scale=alt.Scale(domain=["completo", "falta"], range=[color, "#E9ECEF"])),
+        order=alt.Order("parte:N", sort="descending"),
+        tooltip=alt.value(None),
+    )
+    texto = alt.Chart(pd.DataFrame({"t": [f"{pct:.0f} %"]})).mark_text(
+        fontSize=tamano * 0.19, fontWeight="bold", color=color).encode(text="t:N")
+    return (arco + texto).properties(width=tamano, height=tamano).configure_view(strokeWidth=0)
+
+
+def bloque_completitud(c: comp.Completitud) -> None:
+    """Dona + contenido web / análisis + lista de lo que falta."""
+    # Contenedor horizontal: dona y texto van lado a lado y pasan a dos líneas si no caben (sin superponerse).
+    with st.container(horizontal=True, vertical_alignment="center", gap="medium"):
+        st.altair_chart(completitud_donut(c.pct, c.nivel, 104), width="content")
+        with st.container(width=240):
+            st.markdown(f"**{c.nivel}** · {c.n_completos} de {c.n_total} campos clave")
+            st.progress(c.pct_contenido / 100, text=f"Contenido web {c.pct_contenido:.0f} %")
+            st.progress(c.pct_analisis / 100, text=f"Análisis {c.pct_analisis:.0f} %")
+    if c.faltan:
+        st.caption("Falta: " + ", ".join(S.etiqueta(k) for k in c.faltan))
+    else:
+        st.caption("Tiene todos los campos clave.")
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -44,7 +84,7 @@ def _badges_html(values, outline=False):
     clean = [v for v in values if v and str(v).strip().lower() not in ("no aplica", "no especificado")]
     if not clean:
         return ""
-    return "".join(f'<span class="{cls}">{v}</span>' for v in clean)
+    return "".join(f'<span class="{cls}">{escape(str(v))}</span>' for v in clean)
 
 
 def _field_group(label: str, help_text: str, values: list[str], outline=False):
@@ -70,14 +110,15 @@ def render_news_card(row: pd.Series):
     img_url = row.get("imagen_principal_url")
     if isinstance(img_url, str) and img_url.strip() and _image_is_valid(img_url):
         alt = row.get("imagen_alt") or titulo
-        st.markdown(f'<img src="{img_url}" alt="{alt}" class="gm-hero-img">', unsafe_allow_html=True)
+        st.markdown(f'<img src="{escape(img_url.strip(), quote=True)}" alt="{escape(str(alt), quote=True)}" class="gm-hero-img">',
+                    unsafe_allow_html=True)
     else:
-        st.markdown(f'<div class="gm-placeholder-img">{macro_txt}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="gm-placeholder-img">{escape(macro_txt)}</div>', unsafe_allow_html=True)
 
     # -------------------------------------------------- titulo + meta
     st.markdown(f"### {titulo}")
     st.markdown(
-        f'<div class="gm-meta-row">{fecha} &nbsp;·&nbsp; {" / ".join(lugares)} &nbsp;·&nbsp; {macro_txt}</div>',
+        f'<div class="gm-meta-row">{escape(fecha)} &nbsp;·&nbsp; {escape(" / ".join(lugares))} &nbsp;·&nbsp; {escape(macro_txt)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -106,7 +147,7 @@ def render_news_card(row: pd.Series):
 
     # -------------------------------------------------- clasificacion (agrupada y autoexplicativa)
     st.markdown('<div class="gm-section-label">Clasificación</div>', unsafe_allow_html=True)
-    st.page_link("pages/8_Glosario.py", label="Ver todas las definiciones en el Glosario →")
+    st.page_link("app_pages/glosario.py", label="Ver todas las definiciones en el Glosario →")
 
     _field_group("Categoría temática", "De qué habla la experiencia (codificación inductiva).", _split_sorted(row.get("categorias")))
     _field_group(
@@ -136,6 +177,19 @@ def render_news_card(row: pd.Series):
     if isinstance(genero, str) and genero.strip().lower() not in ("no", ""):
         st.markdown('<div class="gm-field-label">Enfoque de género</div>', unsafe_allow_html=True)
         st.markdown(genero)
+
+    # -------------------------------------------------- variables propias (si hay)
+    propias = [c for c in S.variables_activas() if str(row.get(c.key, "") or "").strip()]
+    if propias:
+        st.divider()
+        st.markdown('<div class="gm-section-label">Variables propias</div>', unsafe_allow_html=True)
+        for c in propias:
+            valor = str(row.get(c.key)).strip()
+            st.markdown(f'<div class="gm-field-label">{escape(c.label)}</div>', unsafe_allow_html=True)
+            if c.tipo == S.ETIQUETAS or isinstance(c.opciones, tuple):
+                st.markdown(_badges_html(S.dividir_etiquetas(valor), outline=True), unsafe_allow_html=True)
+            else:
+                st.markdown(valor)
 
     st.divider()
 
@@ -172,6 +226,15 @@ def render_news_card(row: pd.Series):
     if isinstance(url_original, str) and url_original.strip():
         st.link_button("Leer noticia original ↗", url_original)
 
+    carpeta = row.get("carpeta_proyecto")
+    if isinstance(carpeta, str) and carpeta.strip():
+        st.link_button("Abrir carpeta del proyecto ↗", carpeta.strip(), type="primary")
+    docs = [u.strip() for u in str(row.get("documentos_proyecto") or "").split("|") if u.strip()]
+    if docs:
+        with st.expander(f"Otros enlaces del proyecto ({len(docs)})"):
+            for u in docs:
+                st.markdown(f"- [{u}]({u})")
+
     extra_links = row.get("enlaces_externos_lista") or []
     if extra_links:
         with st.expander(f"Enlaces relacionados ({len(extra_links)})"):
@@ -181,7 +244,7 @@ def render_news_card(row: pd.Series):
     # -------------------------------------------------- metadatos tecnicos
     with st.expander("Metadatos técnicos"):
         meta = {
-            "Slug": row.get("slug"),
+            "Identificador web (slug)": row.get("slug"),
             "Fecha de publicación (web)": format_fecha_es(row.get("fecha_parsed")),
             "Fecha de última modificación (web)": row.get("fecha_modificacion_web"),
             "Autor": row.get("autor") or "No informado",
